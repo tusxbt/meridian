@@ -118,10 +118,16 @@ async function validateDeployPoolThresholds(args) {
 
   const feeActiveTvlRatio = poolDetailFeeActiveTvlRatio(detail);
   const minFeeActiveTvlRatio = numberOrNull(config.screening.minFeeActiveTvlRatio);
+  // Deploy re-validation uses a much lower floor than screening — fee_active_tvl_ratio
+  // is highly time-sensitive and can spike to 0 momentarily even in healthy pools
+  // (e.g. price moves outside all existing LP ranges for a few seconds).
+  // Screening already enforced the real threshold; here we only block if ratio is
+  // deeply zero AND pool has TVL (indicating genuinely dead active bins, not a data blip).
+  const deployFeeFloor = minFeeActiveTvlRatio != null ? minFeeActiveTvlRatio * 0.1 : 0;
   if (
-    minFeeActiveTvlRatio != null &&
-    minFeeActiveTvlRatio > 0 &&
-    (feeActiveTvlRatio == null || feeActiveTvlRatio < minFeeActiveTvlRatio)
+    deployFeeFloor > 0 &&
+    feeActiveTvlRatio != null &&
+    feeActiveTvlRatio < deployFeeFloor
   ) {
     return {
       pass: false,

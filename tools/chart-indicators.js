@@ -25,6 +25,7 @@ function buildSignalSummary(payload) {
   const bollinger = latest?.bollinger || {};
   const supertrend = latest?.supertrend || {};
   const fibonacciLevels = latest?.fibonacci?.levels || {};
+  const macd = latest?.macd || {};
   return {
     close: safeNum(candle.close),
     previousClose: safeNum(previousCandle.close),
@@ -39,6 +40,11 @@ function buildSignalSummary(payload) {
     fib50: safeNum(fibonacciLevels["0.500"]),
     fib618: safeNum(fibonacciLevels["0.618"]),
     fib786: safeNum(fibonacciLevels["0.786"]),
+    macdLine: safeNum(macd.macd ?? macd.line ?? macd.value),
+    macdSignal: safeNum(macd.signal),
+    macdHistogram: safeNum(macd.histogram ?? macd.hist),
+    macdBullish: !!latest?.states?.macdBullish,
+    macdCross: !!latest?.states?.macdCross, // histogram flipped positive
   };
 }
 
@@ -193,6 +199,34 @@ function evaluatePreset(side, preset, payload) {
             reason: "Price rejected below a key Fibonacci level",
             signal: summary,
           };
+    case "tuski_bidask": {
+      // Degen single-sided SOL bid-ask entry:
+      // primary — BB lower band touch + RSI(2) deeply oversold.
+      // MACD histogram, when data is available, is surfaced in the reason but not required.
+      const bbTouched = close != null && lowerBand != null && close <= lowerBand;
+      const rsiOversoldHit = rsi != null && rsi <= oversold;
+      const macdOk = summary.macdHistogram == null || summary.macdHistogram >= 0 || summary.macdBullish;
+      const macdNote = summary.macdHistogram != null
+        ? (macdOk ? " + MACD bullish" : " (MACD caution)")
+        : "";
+      return side === "entry"
+        ? {
+            confirmed: bbTouched && rsiOversoldHit,
+            reason: bbTouched && rsiOversoldHit
+              ? `BB lower touch + RSI(2) ${rsi?.toFixed(1) ?? "n/a"} ≤ ${oversold}${macdNote}`
+              : !bbTouched
+                ? `Price ${close ?? "n/a"} above lower band ${lowerBand ?? "n/a"}`
+                : `RSI(2) ${rsi ?? "n/a"} not oversold (need ≤ ${oversold})`,
+            signal: summary,
+          }
+        : {
+            confirmed:
+              (close != null && upperBand != null && close >= upperBand) ||
+              (rsi != null && rsi >= overbought),
+            reason: "Tuski BidAsk exit: BB upper band touch or RSI overbought",
+            signal: summary,
+          };
+    }
     default:
       return {
         confirmed: false,

@@ -113,20 +113,41 @@ HARD RULE (no exceptions):
 - fees_sol < ${config.screening.minTokenFeesSol} → SKIP. Low fees = bundled/scam. Smart wallets do NOT override this.
 - bots > ${config.screening.maxBotHoldersPct}% → already hard-filtered before you see the candidate list.
 
-RISK SIGNALS (guidelines — use judgment):
-- top10 > 60% → concentrated, risky
-- bundle_pct from OKX = secondary context only, not a hard filter
-- rugpull flag from OKX → major negative score penalty and default to SKIP; only override if smart wallets are present and conviction is otherwise high
-- wash trading flag from OKX → treat as disqualifying even if other metrics look attractive
-- PVP symbol conflict (same exact symbol across multiple mints) → major negative. Avoid unless the setup is exceptional and clearly stronger than the competing symbol variants.
-- no narrative + no smart wallets → skip
+═══════════════════════════════════════════
+ SELECTION PRIORITY (in order)
+═══════════════════════════════════════════
 
-NARRATIVE QUALITY (your main judgment call):
-- GOOD: specific origin — real event, viral moment, named entity, active community
-- BAD: generic hype ("next 100x", "community token") with no identifiable subject
-- Smart wallets present → can override weak narrative, and are the only valid override for an OKX rugpull flag
+1. NARRATIVE + SMART WALLETS — most important
+   - STRONG narrative: real event, viral moment, named entity, active community, KOL mention
+   - WEAK narrative: generic hype ("next 100x", "community token") with no identifiable hook
+   - smart_money_buy = true OR smart wallets present in pool → conviction multiplier, can elevate a moderate pool
+   - No narrative AND no smart wallets → SKIP regardless of other metrics
 
-POOL MEMORY: Past losses or problems → strong skip signal.
+2. VOLUME — second most important
+   - High volume_window = real trading activity, token has momentum RIGHT NOW
+   - volume_change_pct rising → momentum building, better timing
+   - Flat or declining volume → pool is cooling, timing is late
+   - swap_count high → real organic trading, not just a few large moves
+
+3. FEE EFFICIENCY (fee_active_tvl_ratio) — confirms the pool is earnable
+   - High fee/active TVL → LP capital is working hard in the active bins
+   - Use this to rank between candidates with similar narrative/volume
+
+4. RISK SIGNALS — eliminate disqualifiers
+   - rugpull flag (OKX) → SKIP by default; override only if smart wallets confirm
+   - wash trading flag → DISQUALIFYING, no override
+   - PVP symbol conflict → major negative
+   - top10 > 60% → risky, penalize
+   - pool memory: past losses → strong skip
+
+POOL MEMORY: Past losses or repeated OOR on a pool → skip even if current metrics look good.
+
+INDICATOR SIGNAL RULES:
+- indicator_confirmation.confirmed = true → strong positive, proceed normally.
+- indicator_confirmation.skipped = true (API unavailable) → neutral, proceed normally.
+- indicator_override_required = true (confirmed = false) → negative signal. Can deploy anyway if:
+  narrative is strong AND smart_money_buy = true AND volume is high and rising.
+  Never override for a dead pool (flat/declining volume, few swaps).
 
 DEPLOY RULES:
 - COMPOUNDING: Use the deploy amount from the goal EXACTLY. Do NOT default to a smaller number.
