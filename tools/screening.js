@@ -47,7 +47,10 @@ function scoreCandidate(pool) {
   const organic = Number(pool.organic_score || 0);
   const volume = Number(pool.volume_window || 0);
   const holders = Number(pool.holders || 0);
-  return feeTvl * 1000 + organic * 10 + volume / 100 + holders / 100;
+  // Narrative + volume are primary signals — weighted heavily above fee/TVL efficiency
+  const hasSmartMoney = pool.smart_money_buy ? 200 : 0;
+  const hasDiscordSignal = pool.discord_signal ? 100 : 0;
+  return hasSmartMoney + hasDiscordSignal + volume * 0.05 + feeTvl * 300 + organic * 5 + holders / 200;
 }
 
 function numeric(value) {
