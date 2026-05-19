@@ -24,11 +24,11 @@ const PVP_SHORTLIST_LIMIT = 2;
 const PVP_RIVAL_LIMIT = 2;
 const PVP_MIN_ACTIVE_TVL = 5_000;
 const PVP_MIN_HOLDERS = 500;
-const PVP_MIN_GLOBAL_FEES_SOL = 30;
+const PVP_MIN_GLOBAL_FEES_SOL = 20;
 
 // ── Hardcoded floors — cannot be overridden by user config ──────────────────
-const HARD_MIN_TVL              = 20_000;
-const HARD_MIN_VOLUME_PER_15MIN = 2_000;
+const HARD_MIN_TVL              = 7_500;
+const HARD_MIN_VOLUME_PER_15MIN = 1_500;
 const MAX_FEE_VOLUME_RATIO      = 0.10;
 
 function getHardVolumeFloor(timeframe) {
