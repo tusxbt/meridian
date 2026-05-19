@@ -11,7 +11,7 @@ import { getTopCandidates } from "./tools/screening.js";
 import { formatGmgnCandidateForPrompt } from "./tools/gmgn.js";
 import { config, reloadScreeningThresholds, computeDeployAmount } from "./config.js";
 import { evolveThresholds, getPerformanceSummary } from "./lessons.js";
-import { executeTool, registerCronRestarter } from "./tools/executor.js";
+import { executeTool, registerCronRestarter, setPendingCloseReason } from "./tools/executor.js";
 import {
   startPolling,
   stopPolling,
@@ -325,6 +325,12 @@ export async function runManagementCycle({ silent = false } = {}) {
           p.instruction ? `  instruction: "${p.instruction}"` : null,
         ].filter(Boolean).join("\n");
       }).join("\n\n");
+
+      // Register close reasons so notifyClose gets the correct rule even if LLM omits reason arg
+      for (const p of actionPositions) {
+        const act = actionMap.get(p.position);
+        if (act.action === "CLOSE" && act.reason) setPendingCloseReason(p.position, act.reason);
+      }
 
       const { content } = await agentLoop(`
 MANAGEMENT ACTION REQUIRED — ${actionPositions.length} position(s)

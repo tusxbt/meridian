@@ -49,6 +49,11 @@ let _pendingDeployReason = null;
 let _lastValidatedPoolDetail = null;
 export function setPendingDeployReason(text) { _pendingDeployReason = text ? String(text).replace(/<think>[\s\S]*?<\/think>/gi, "").trim() : null; }
 
+const _pendingCloseReasons = new Map();
+export function setPendingCloseReason(positionAddress, reason) {
+  if (positionAddress && reason) _pendingCloseReasons.set(positionAddress, reason);
+}
+
 const SENSITIVE_CONFIG_KEYS = new Set([
   "gmgnApiKey",
   "hiveMindApiKey",
@@ -648,7 +653,9 @@ export async function executeTool(name, args) {
         _pendingDeployReason = null;
         _lastValidatedPoolDetail = null;
       } else if (name === "close_position") {
-        notifyClose({ pair: result.pool_name || args.position_address?.slice(0, 8), pnlUsd: result.pnl_usd ?? 0, pnlPct: result.pnl_pct ?? 0, reason: args.reason ?? null }).catch(() => {});
+        const closeReason = args.reason ?? _pendingCloseReasons.get(args.position_address) ?? null;
+        _pendingCloseReasons.delete(args.position_address);
+        notifyClose({ pair: result.pool_name || args.position_address?.slice(0, 8), pnlUsd: result.pnl_usd ?? 0, pnlPct: result.pnl_pct ?? 0, reason: closeReason }).catch(() => {});
         // Note low-yield closes in pool memory so screener avoids redeploying
         if (args.reason && args.reason.toLowerCase().includes("yield")) {
           const poolAddr = result.pool || args.pool_address;
