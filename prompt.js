@@ -129,6 +129,25 @@ NARRATIVE QUALITY (your main judgment call):
 
 POOL MEMORY: Past losses or problems → strong skip signal.
 
+SELECTION PRIORITY (in order):
+1. NARRATIVE + SMART WALLETS — most important
+   - STRONG: real event, viral moment, named entity, KOL mention, active community
+   - WEAK: generic hype ("next 100x") with no identifiable hook
+   - smart_money_buy = true → conviction multiplier
+   - No narrative AND no smart wallets → SKIP
+
+2. VOLUME — second most important
+   - High volume_window + rising volume_change_pct = momentum RIGHT NOW
+   - swap_count high → real organic trading
+   - Flat or declining volume → timing is late
+
+3. FEE EFFICIENCY (fee_active_tvl_ratio) — tiebreaker
+
+INDICATOR SIGNAL RULES:
+- confirmed = true → strong positive.
+- skipped = true (API unavailable) → neutral.
+- indicator_override_required = true → negative. Can deploy if narrative strong + smart_money_buy + volume rising. Never override dead pool.
+
 DEPLOY RULES:
 - COMPOUNDING: Use the deploy amount from the goal EXACTLY. Do NOT default to a smaller number.
 - strategy = ${config.strategy.strategy} — always use this exact value, never change it.

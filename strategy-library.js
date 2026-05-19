@@ -11,13 +11,67 @@ import { log } from "./logger.js";
 
 const STRATEGY_FILE = "./strategy-library.json";
 
+const DEFAULT_STRATEGIES = {
+  tuski_bidask: {
+    id: "tuski_bidask",
+    name: "Tuski BidAsk",
+    author: "tuski",
+    lp_strategy: "bid_ask",
+    token_criteria: {
+      min_mcap: 150_000,
+      max_mcap: 10_000_000,
+      min_holders: 500,
+      min_age_hours: 2,
+      min_organic: 60,
+      max_bundlers_pct: 30,
+      max_top10_pct: 60,
+      quote_tokens: ["SOL", "USDC", "USDT"],
+      notes: "Degen volatile meme tokens only. Quote must be correlated (SOL/USDC/USDT). Avoid fresh launches < 2h. Smart wallet presence is a strong positive signal. Token must show real trading activity — fee income must come from swap volume, not farming rewards.",
+    },
+    entry: {
+      condition: "Deploy when price is at/below BB lower band AND RSI(2) ≤ 25 — oversold mean-reversion dip entry on 5m or 15m chart",
+      single_side: "sol",
+      bins_above: 0,
+      amount_x: 0,
+      indicator_preset: "tuski_bidask",
+      preferred_fee_tier: "2-5%",
+      notes: "Single-sided SOL bid-ask, all bins below current price (bins_above=0, amount_x=0). Dynamic bins_below scales with volatility. Prefer pools with fee tier 2-5%.",
+    },
+    range: {
+      type: "bid_ask",
+      bins_above: 0,
+      bins_below_min: 35,
+      bins_below_max: 45,
+      notes: "Tight bid-ask range — concentrates liquidity close to current price for maximum fee density per swap. At bin_step=80 and 45 bins, covers approximately -24% downside. Goes OOR faster — rely on fast OOR exit (10 min) and redeploy cycle.",
+    },
+    exit: {
+      trailing_tp_trigger_pct: 2,
+      trailing_drop_pct: 1.5,
+      stop_loss_pct: -50,
+      min_yield_fee_tvl_24h: 7,
+      oor_wait_minutes: 10,
+      notes: "Trailing TP activates at +2% peak PnL, exits when drops 1.5% from peak. Close if OOR for 10+ consecutive minutes. Close if yield < 7% fee/TVL per 24h after 25 min age.",
+    },
+    best_for: "Degen volatile meme tokens. Tight range = high fee density when in range. Fast OOR exit + redeploy cycle.",
+  },
+};
+
 function load() {
-  if (!fs.existsSync(STRATEGY_FILE)) return { active: null, strategies: {} };
-  try {
-    return JSON.parse(fs.readFileSync(STRATEGY_FILE, "utf8"));
-  } catch {
-    return { active: null, strategies: {} };
+  let db;
+  if (!fs.existsSync(STRATEGY_FILE)) {
+    db = { active: "tuski_bidask", strategies: {} };
+  } else {
+    try {
+      db = JSON.parse(fs.readFileSync(STRATEGY_FILE, "utf8"));
+    } catch {
+      db = { active: "tuski_bidask", strategies: {} };
+    }
   }
+  // Merge default strategies in (user entries take precedence)
+  db.strategies = { ...DEFAULT_STRATEGIES, ...db.strategies };
+  // Set default active if none set
+  if (!db.active) db.active = "tuski_bidask";
+  return db;
 }
 
 function save(data) {
