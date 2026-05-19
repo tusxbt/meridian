@@ -397,34 +397,45 @@ export function stopPolling() {
 }
 
 // ─── Notification helpers ────────────────────────────────────────
-export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, rangeCoverage, binStep, baseFee }) {
+export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, rangeCoverage, binStep, baseFee, tvl, volume, feeActiveTvlRatio, reason }) {
   if (hasActiveLiveMessage()) return;
-  const priceStr = priceRange
-    ? `Price range: ${priceRange.min < 0.0001 ? priceRange.min.toExponential(3) : priceRange.min.toFixed(6)} – ${priceRange.max < 0.0001 ? priceRange.max.toExponential(3) : priceRange.max.toFixed(6)}\n`
-    : "";
-  const coverageStr = rangeCoverage
-    ? `Range cover: ${fmtPct(rangeCoverage.downside_pct)} downside | ${fmtPct(rangeCoverage.upside_pct)} upside | ${fmtPct(rangeCoverage.width_pct)} total\n`
-    : "";
-  const poolStr = (binStep || baseFee)
-    ? `Bin step: ${binStep ?? "?"}  |  Base fee: ${baseFee != null ? baseFee + "%" : "?"}\n`
-    : "";
+  const SEP = "──────────────────";
+  const reasonText = reason
+    ? String(reason).replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/\n+/g, " ").trim().slice(0, 240)
+    : null;
+  const reasonBlock = reasonText ? `\n${SEP}\n🎯 ${reasonText}\n` : "\n";
+  const downPct = rangeCoverage?.downside_pct != null ? `-${Math.abs(Number(rangeCoverage.downside_pct)).toFixed(2)}%` : "?";
+  const upPct = rangeCoverage?.upside_pct != null ? `+${Number(rangeCoverage.upside_pct).toFixed(2)}%` : "+0%";
+  const poolDetail = [
+    tvl != null ? `TVL: $${fmtK(tvl)}` : null,
+    volume != null ? `Vol: $${fmtK(volume)}` : null,
+    feeActiveTvlRatio != null ? `Fee/TVL: ${(Number(feeActiveTvlRatio) * 100).toFixed(2)}%` : null,
+  ].filter(Boolean).join("  │  ");
   await sendHTML(
-    `✅ <b>Deployed</b> ${pair}\n` +
-    `Amount: ${amountSol} SOL\n` +
-    priceStr +
-    coverageStr +
-    poolStr +
-    `Position: <code>${position?.slice(0, 8)}...</code>\n` +
-    `Tx: <code>${tx?.slice(0, 16)}...</code>`
+    `🟢 <b>DEPLOYED — ${pair}</b>\n` +
+    `${SEP}` +
+    reasonBlock +
+    `${SEP}\n` +
+    `💰 ${Number(amountSol).toFixed(3)} SOL  │  Step: ${binStep ?? "?"}  │  Fee: ${baseFee != null ? baseFee + "%" : "?"}\n` +
+    `📐 Range: ${downPct} / ${upPct}\n` +
+    (poolDetail ? `📊 ${poolDetail}\n` : "") +
+    `🔑 <code>${position?.slice(0, 22) ?? "?"}…</code>\n` +
+    `📜 Tx: <code>${tx?.slice(0, 22) ?? "?"}…</code>`
   );
 }
 
-export async function notifyClose({ pair, pnlUsd, pnlPct }) {
+export async function notifyClose({ pair, pnlUsd, pnlPct, reason }) {
   if (hasActiveLiveMessage()) return;
-  const sign = pnlUsd >= 0 ? "+" : "";
+  const SEP = "──────────────────";
+  const sign = (pnlUsd ?? 0) >= 0 ? "+" : "";
+  const pnlSign = (pnlPct ?? 0) >= 0 ? "+" : "";
+  const emoji = (pnlUsd ?? 0) >= 0 ? "🟢" : "🔴";
+  const reasonLine = reason ? `\n📋 Reason: ${reason}` : "";
   await sendHTML(
-    `🔒 <b>Closed</b> ${pair}\n` +
-    `PnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${sign}${(pnlPct ?? 0).toFixed(2)}%)`
+    `${emoji} <b>CLOSED — ${pair}</b>\n` +
+    `${SEP}\n` +
+    `💵 PnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${pnlSign}${(pnlPct ?? 0).toFixed(2)}%)` +
+    reasonLine
   );
 }
 
@@ -452,4 +463,12 @@ function sleep(ms) {
 function fmtPct(value) {
   const n = Number(value);
   return Number.isFinite(n) ? `${n.toFixed(2)}%` : "?";
+}
+
+function fmtK(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "?";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return n.toFixed(0);
 }

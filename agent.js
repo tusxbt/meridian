@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { jsonrepair } from "jsonrepair";
 import { buildSystemPrompt } from "./prompt.js";
-import { executeTool } from "./tools/executor.js";
+import { executeTool, setPendingDeployReason } from "./tools/executor.js";
 import { tools } from "./tools/definitions.js";
 
 const MANAGER_TOOLS  = new Set(["close_position", "claim_fees", "swap_token", "get_position_pnl", "get_my_positions", "get_wallet_balance"]);
@@ -294,6 +294,11 @@ export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHis
         return { content: msg.content, userMessage: goal };
       }
       sawToolCall = true;
+
+      // Capture reasoning text for deploy notifications
+      if (msg.content && msg.tool_calls.some(tc => tc.function?.name === "deploy_position")) {
+        setPendingDeployReason(msg.content);
+      }
 
       // Execute each tool call in parallel
       const toolResults = await Promise.all(msg.tool_calls.map(async (toolCall) => {

@@ -1659,13 +1659,77 @@ async function telegramHandler(msg) {
       const { positions, total_positions } = await getMyPositions({ force: true });
       if (total_positions === 0) { await sendMessage("No open positions."); return; }
       const cur = config.management.solMode ? "◎" : "$";
-      const lines = positions.map((p, i) => {
-        const pnl = p.pnl_usd >= 0 ? `+${cur}${p.pnl_usd}` : `-${cur}${Math.abs(p.pnl_usd)}`;
-        const age = p.age_minutes != null ? `${p.age_minutes}m` : "?";
-        const oor = !p.in_range ? " ⚠️OOR" : "";
-        return `${i + 1}. ${p.pair} | ${cur}${p.total_value_usd} | PnL: ${pnl} | fees: ${cur}${p.unclaimed_fees_usd} | ${age}${oor}`;
+      const SEP = "──────────────────";
+      const BAR = 14;
+      const cards = positions.map((p, i) => {
+        const tracked = getTrackedPosition(p.position);
+        const peakPct = tracked?.peak_pnl_pct ?? 0;
+        const trailingActive = tracked?.trailing_active ?? false;
+        const amountSol = tracked?.amount_sol;
+        const pnlPct = p.pnl_pct ?? 0;
+        const pnlUsd = p.pnl_usd ?? 0;
+        const minsOOR = p.minutes_out_of_range ?? 0;
+        const waitMins = config.management.outOfRangeWaitMinutes;
+        const isOORUp = p.active_bin != null && p.upper_bin != null && p.active_bin > p.upper_bin;
+        const isOORDown = p.active_bin != null && p.lower_bin != null && p.active_bin < p.lower_bin;
+        const isOOR = !p.in_range;
+
+        // Status emoji
+        const statusEmoji = isOOR ? "🔴" : pnlPct < -3 ? "🟡" : "🟢";
+
+        // Header
+        const oorLabel = isOOR ? `  ⚠️ OOR ${minsOOR}m/${waitMins}m` : "";
+        const header = `${statusEmoji} ${i + 1}. ${p.pair}${oorLabel}`;
+
+        // Status line
+        let statusLine;
+        if (isOORUp) statusLine = `🚀 OOR upside — tunggu konfirmasi (${minsOOR}/${waitMins}m)`;
+        else if (isOORDown) statusLine = `📉 OOR downside — harga turun dari range (${minsOOR}/${waitMins}m)`;
+        else if (trailingActive) statusLine = `💡 Trailing TP aktif — peak +${peakPct.toFixed(1)}%`;
+        else if (pnlPct >= config.management.takeProfitPct) statusLine = `💡 Soft TP — agent evaluasi apakah hold atau ambil profit`;
+        else if (pnlPct < -3) statusLine = `🟡 Sedikit negatif — masih in-range, beri waktu`;
+        else statusLine = `🔵 In range — performing`;
+
+        // PnL
+        const pnlUsdStr = pnlUsd >= 0 ? `+${cur}${pnlUsd.toFixed(2)}` : `-${cur}${Math.abs(pnlUsd).toFixed(2)}`;
+        const pnlPctStr = (pnlPct >= 0 ? "+" : "") + pnlPct.toFixed(1) + "%";
+        const peakStr = peakPct > 0 ? `  │  🏔 Peak: +${peakPct.toFixed(1)}%` : "";
+        const pnlLine = `💵 PnL: ${pnlUsdStr} (${pnlPctStr})${peakStr}`;
+
+        // Age
+        const ageMin = p.age_minutes ?? 0;
+        const ageStr = ageMin >= 60 ? `${Math.floor(ageMin / 60)}h ${ageMin % 60}m` : `${ageMin}m`;
+        const solStr = amountSol != null ? `${Number(amountSol).toFixed(3)} SOL` : "? SOL";
+
+        // Bin bar
+        let binBar = "";
+        if (p.lower_bin != null && p.upper_bin != null && p.active_bin != null) {
+          const range = p.upper_bin - p.lower_bin;
+          if (isOORUp) {
+            binBar = `bin ${p.lower_bin} [${"━".repeat(BAR)} ▶] bin ${p.upper_bin}`;
+          } else if (isOORDown) {
+            binBar = `bin ${p.lower_bin} [◀ ${"━".repeat(BAR)}] bin ${p.upper_bin}`;
+          } else if (range > 0) {
+            const pos = Math.min(BAR - 1, Math.max(0, Math.round(((p.active_bin - p.lower_bin) / range) * (BAR - 1))));
+            const bar = "━".repeat(pos) + "●" + "━".repeat(BAR - 1 - pos);
+            const pctInRange = Math.round(((p.active_bin - p.lower_bin) / range) * 100);
+            binBar = `bin ${p.lower_bin} [${bar}] bin ${p.upper_bin}  ${pctInRange}%`;
+          }
+        }
+
+        return [
+          header,
+          SEP,
+          statusLine,
+          SEP,
+          pnlLine,
+          `💎 Fees claimable: ${cur}${(p.unclaimed_fees_usd ?? 0).toFixed(2)}`,
+          `⏱ ${ageStr}  │  ${solStr}`,
+          `💰 ${cur}${(p.total_value_usd ?? 0).toFixed(2)}`,
+          binBar,
+        ].filter(Boolean).join("\n");
       });
-      await sendMessage(`📊 Open Positions (${total_positions}):\n\n${lines.join("\n")}\n\n/close <n> to close | /set <n> <note> to set instruction`);
+      await sendMessage(`📊 Open Positions (${total_positions})\n\n${cards.join("\n\n")}\n\n/close <n>  │  /set <n> <note>`);
     } catch (e) { await sendMessage(`Error: ${e.message}`).catch(() => {}); }
     return;
   }
