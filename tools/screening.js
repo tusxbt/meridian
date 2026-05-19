@@ -27,9 +27,16 @@ const PVP_MIN_HOLDERS = 500;
 const PVP_MIN_GLOBAL_FEES_SOL = 30;
 
 // ── Hardcoded floors — cannot be overridden by user config ──────────────────
-const HARD_MIN_TVL         = 20_000;  // $20k — pool must have meaningful liquidity
-const HARD_MIN_VOLUME      = 2_000;   // $2k per window — active trading required
-const MAX_FEE_VOLUME_RATIO = 0.10;    // 10% — fee/volume above this = likely rewards inflation
+const HARD_MIN_TVL              = 20_000;  // $20k — pool must have meaningful liquidity
+const HARD_MIN_VOLUME_PER_15MIN = 2_000;   // $2k calibrated for 15m window; scaled for other TFs
+const MAX_FEE_VOLUME_RATIO      = 0.10;    // 10% — fee/volume above this = likely rewards inflation
+
+// Scale volume floor proportionally to timeframe so 5m is not unfairly penalized.
+// $2k at 15m → $667 at 5m → $4k at 30m (capped at $2k) → $2k at 60m+
+function getHardVolumeFloor(timeframe) {
+  const minutes = TIMEFRAME_MINUTES[timeframe] || 5;
+  return Math.round(HARD_MIN_VOLUME_PER_15MIN * Math.min(minutes, 15) / 15);
+}
 
 // Correlated quote tokens only — degen meme tokens must pair with SOL/USDC/USDT
 const ALLOWED_QUOTE_MINTS = new Set([
@@ -127,7 +134,7 @@ function getRawPoolScreeningRejectReason(pool, s) {
   if (mcap == null || mcap < s.minMcap) return `mcap ${mcap ?? "unknown"} below minMcap ${s.minMcap}`;
   if (mcap > s.maxMcap) return `mcap ${mcap} above maxMcap ${s.maxMcap}`;
   if (holders == null || holders < s.minHolders) return `holders ${holders ?? "unknown"} below minHolders ${s.minHolders}`;
-  const volumeFloor = Math.max(s.minVolume, HARD_MIN_VOLUME);
+  const volumeFloor = Math.max(s.minVolume, getHardVolumeFloor(s.timeframe));
   if (volume == null || volume < volumeFloor) return `volume ${volume ?? "unknown"} below floor ${volumeFloor}`;
   const tvlFloor = Math.max(s.minTvl, HARD_MIN_TVL);
   if (tvl == null || tvl < tvlFloor) return `TVL ${tvl ?? "unknown"} below floor ${tvlFloor}`;
@@ -384,7 +391,7 @@ export async function discoverPools({
     `base_token_market_cap>=${s.minMcap}`,
     `base_token_market_cap<=${s.maxMcap}`,
     `base_token_holders>=${s.minHolders}`,
-    `volume>=${Math.max(s.minVolume, HARD_MIN_VOLUME)}`,
+    `volume>=${Math.max(s.minVolume, getHardVolumeFloor(s.timeframe))}`,
     `tvl>=${Math.max(s.minTvl, HARD_MIN_TVL)}`,
     s.maxTvl != null ? `tvl<=${s.maxTvl}` : null,
     `dlmm_bin_step>=${s.minBinStep}`,
