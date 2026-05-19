@@ -128,6 +128,16 @@ NARRATIVE QUALITY (your main judgment call):
 
 POOL MEMORY: Past losses or problems → strong skip signal.
 
+INDICATOR SIGNAL RULES:
+- indicator_confirmation.confirmed = true → strong positive, proceed normally.
+- indicator_confirmation.skipped = true (API unavailable) → neutral, proceed normally.
+- indicator_override_required = true (confirmed = false) → STRONG NEGATIVE. Default: skip this pool.
+  Override ONLY if ALL three are true simultaneously:
+  1. fee_active_tvl_ratio is the highest among all candidates
+  2. smart_money_buy = true OR smart wallets found in this pool
+  3. organic_score ≥ 75 AND swap_count / volume is actively rising (not a dead pool)
+  A dead pool (flat volume, no swaps, fee declining) = NEVER override regardless of other signals.
+
 DEPLOY RULES:
 - COMPOUNDING: Use the deploy amount from the goal EXACTLY. Do NOT default to a smaller number.
 - bins_below = round(config.strategy.minBinsBelow + (candidate volatility/5)*(config.strategy.maxBinsBelow-config.strategy.minBinsBelow)) clamped to [minBinsBelow,maxBinsBelow]. Volatility must be a positive number; 0/unknown means skip.

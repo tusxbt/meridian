@@ -714,18 +714,15 @@ export async function getTopCandidates({ limit = 10 } = {}) {
       }),
     );
     const confirmationByPool = new Map(confirmations.map((entry) => [entry.pool, entry.confirmation]));
-    const before = eligible.length;
-    const confirmedEligible = eligible.filter((pool) => {
+    for (const pool of eligible) {
       const confirmation = confirmationByPool.get(pool.pool);
       pool.indicator_confirmation = confirmation || null;
-      if (!confirmation || confirmation.confirmed) return true;
-      pushFilteredReason(filteredOut, pool, `indicator reject: ${confirmation.reason}`);
-      log("screening", `Indicator rejected ${pool.name} (${pool.pool.slice(0, 8)}): ${confirmation.reason}`);
-      return false;
-    });
-    eligible.splice(0, eligible.length, ...confirmedEligible);
-    if (eligible.length < before) {
-      log("screening", `Indicator confirmation removed ${before - eligible.length} candidate(s)`);
+      // Soft signal — LLM decides whether to override unconfirmed indicators.
+      // Pools are never hard-removed here; only flagged for LLM awareness.
+      if (confirmation && !confirmation.confirmed && !confirmation.skipped) {
+        pool.indicator_override_required = true;
+        log("screening", `Indicator not confirmed for ${pool.name} (${pool.pool.slice(0, 8)}): ${confirmation.reason} — passing to LLM`);
+      }
     }
   }
 
