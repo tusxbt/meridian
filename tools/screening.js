@@ -26,6 +26,18 @@ const PVP_MIN_ACTIVE_TVL = 5_000;
 const PVP_MIN_HOLDERS = 500;
 const PVP_MIN_GLOBAL_FEES_SOL = 30;
 
+// ── Hardcoded floors — cannot be overridden by user config ──────────────────
+const HARD_MIN_TVL         = 20_000;  // $20k — pool must have meaningful liquidity
+const HARD_MIN_VOLUME      = 2_000;   // $2k per window — active trading required
+const MAX_FEE_VOLUME_RATIO = 0.05;    // 5% — fee/volume above this = likely rewards inflation
+
+// Correlated quote tokens only — degen meme tokens must pair with SOL/USDC/USDT
+const ALLOWED_QUOTE_MINTS = new Set([
+  "So11111111111111111111111111111111111111112",     // SOL (wrapped)
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  // USDC
+  "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  // USDT
+]);
+
 function normalizeSymbol(symbol) {
   return String(symbol || "").trim().toUpperCase();
 }
@@ -93,6 +105,8 @@ function getRawPoolScreeningRejectReason(pool, s) {
   const quoteOrganic = numeric(quote?.organic_score);
   const launchpad = getPoolLaunchpad(pool);
   const createdAt = numeric(base?.created_at);
+  const fee       = numeric(pool?.fee);
+  const quoteMint = quote?.address;
 
   if (s.excludeHighSupplyConcentration && pool?.base_token_has_high_supply_concentration === true) {
     return "base token has high supply concentration";
@@ -102,11 +116,18 @@ function getRawPoolScreeningRejectReason(pool, s) {
   if (pool?.base_token_has_high_single_ownership === true) return "base token has high single ownership";
   if (pool?.pool_type && pool.pool_type !== "dlmm") return `pool_type ${pool.pool_type} is not dlmm`;
 
+  // Hardcoded: only correlated pairs (SOL/USDC/USDT as quote) are allowed
+  if (!quoteMint || !ALLOWED_QUOTE_MINTS.has(quoteMint)) {
+    return `quote ${quote?.symbol || quoteMint?.slice(0, 8) || "unknown"} is not a correlated pair (SOL/USDC/USDT only)`;
+  }
+
   if (mcap == null || mcap < s.minMcap) return `mcap ${mcap ?? "unknown"} below minMcap ${s.minMcap}`;
   if (mcap > s.maxMcap) return `mcap ${mcap} above maxMcap ${s.maxMcap}`;
   if (holders == null || holders < s.minHolders) return `holders ${holders ?? "unknown"} below minHolders ${s.minHolders}`;
-  if (volume == null || volume < s.minVolume) return `volume ${volume ?? "unknown"} below minVolume ${s.minVolume}`;
-  if (tvl == null || tvl < s.minTvl) return `TVL ${tvl ?? "unknown"} below minTvl ${s.minTvl}`;
+  const volumeFloor = Math.max(s.minVolume, HARD_MIN_VOLUME);
+  if (volume == null || volume < volumeFloor) return `volume ${volume ?? "unknown"} below floor ${volumeFloor}`;
+  const tvlFloor = Math.max(s.minTvl, HARD_MIN_TVL);
+  if (tvl == null || tvl < tvlFloor) return `TVL ${tvl ?? "unknown"} below floor ${tvlFloor}`;
   if (s.maxTvl != null && tvl > s.maxTvl) return `TVL ${tvl} above maxTvl ${s.maxTvl}`;
   if (binStep == null || binStep < s.minBinStep) return `bin_step ${binStep ?? "unknown"} below minBinStep ${s.minBinStep}`;
   if (binStep > s.maxBinStep) return `bin_step ${binStep} above maxBinStep ${s.maxBinStep}`;
@@ -142,6 +163,15 @@ function getRawPoolScreeningRejectReason(pool, s) {
     const minCreatedAt = Date.now() - s.maxTokenAgeHours * 3_600_000;
     if (createdAt == null || createdAt < minCreatedAt) return `token age above maxTokenAgeHours ${s.maxTokenAgeHours}`;
   }
+
+  // Hardcoded: fee income must come from real swap activity, not farming rewards
+  if (fee != null && fee > 0 && (volume == null || volume === 0)) {
+    return "fee income without swap volume — likely farming rewards, not real trading fees";
+  }
+  if (fee != null && volume != null && volume > 0 && fee / volume > MAX_FEE_VOLUME_RATIO) {
+    return `fee/volume ${(fee / volume * 100).toFixed(1)}% > ${MAX_FEE_VOLUME_RATIO * 100}% — likely includes non-swap rewards`;
+  }
+
   return null;
 }
 
@@ -351,8 +381,8 @@ export async function discoverPools({
     `base_token_market_cap>=${s.minMcap}`,
     `base_token_market_cap<=${s.maxMcap}`,
     `base_token_holders>=${s.minHolders}`,
-    `volume>=${s.minVolume}`,
-    `tvl>=${s.minTvl}`,
+    `volume>=${Math.max(s.minVolume, HARD_MIN_VOLUME)}`,
+    `tvl>=${Math.max(s.minTvl, HARD_MIN_TVL)}`,
     s.maxTvl != null ? `tvl<=${s.maxTvl}` : null,
     `dlmm_bin_step>=${s.minBinStep}`,
     `dlmm_bin_step<=${s.maxBinStep}`,

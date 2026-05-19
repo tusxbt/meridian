@@ -26,6 +26,49 @@ function save(data) {
 
 // ─── Default Strategies ─────────────────────────────────────────
 const DEFAULT_STRATEGIES = {
+  tuski_bidask: {
+    id: "tuski_bidask",
+    name: "Tuski BidAsk",
+    author: "tuski",
+    lp_strategy: "bid_ask",
+    token_criteria: {
+      min_mcap: 150_000,
+      max_mcap: 10_000_000,
+      min_holders: 500,
+      min_age_hours: 6,
+      min_organic: 60,
+      max_bundlers_pct: 30,
+      max_top10_pct: 60,
+      quote_tokens: ["SOL", "USDC", "USDT"],
+      notes: "Degen volatile meme tokens only. Quote must be correlated (SOL/USDC/USDT). Avoid fresh launches < 6h and micro-caps < $150k. Smart wallet presence is a strong positive signal. Token must show real trading activity — fee income must come from swap volume, not farming rewards.",
+    },
+    entry: {
+      condition: "Deploy when price is at/below BB lower band AND RSI(2) ≤ 20 — oversold mean-reversion dip entry on 5m or 15m chart",
+      single_side: "sol",
+      bins_above: 0,
+      amount_x: 0,
+      indicator_preset: "tuski_bidask",
+      preferred_fee_tier: "2-5%",
+      notes: "Single-sided SOL bid-ask, all bins below current price (bins_above=0, amount_x=0). Preferred fee tier 2-5% (high fee = real active trading, not farming). Deploy at oversold dips, not into momentum pumps. If ATH filter is set (-20), only deploy when price is ≥ 20% below ATH. Dynamic bins_below scales with volatility — higher volatility = wider range to catch larger swings.",
+    },
+    range: {
+      type: "bid_ask",
+      bins_above: 0,
+      bins_below_formula: "round(minBinsBelow + (volatility/5) × (maxBinsBelow - minBinsBelow))",
+      bins_below_min: 35,
+      bins_below_max: 100,
+      notes: "Bid-ask shape concentrates liquidity at range edges — earns more fees during volatility spikes than Curve/Spot shapes. Wider range for higher-volatility pools. At bin_step=80 and 100 bins, covers approximately -55% downside. Bid-ask shape is optimal: as price moves through bins, fees are captured both ways. More capital at edges = more earned during the volatile entry/exit swings.",
+    },
+    exit: {
+      trailing_tp_trigger_pct: 3,
+      trailing_drop_pct: 1.5,
+      stop_loss_pct: -50,
+      min_yield_fee_tvl_24h: 7,
+      oor_wait_minutes: 30,
+      notes: "Trailing TP activates at +3% peak PnL, exits when drops 1.5% from peak (15s reconfirmation). Hard stop if price drops -50% in the tracking window. Close if OOR for 30+ consecutive minutes — position is no longer earning. Close if yield < 7% fee/TVL per 24h after 60 min age — pool is dying. After 3 consecutive OOR closes on same pool → 12h cooldown on that pool and base token.",
+    },
+    best_for: "Degen volatile meme tokens. Earns fees from downside price action and captures mean-reversion bounces. Works best when deployed at oversold RSI(2) dips with BB lower band confirmation.",
+  },
   custom_ratio_spot: {
     id: "custom_ratio_spot",
     name: "Custom Ratio Spot",
@@ -105,7 +148,7 @@ function ensureDefaultStrategies() {
     }
   }
   if (added) {
-    if (!db.active) db.active = "custom_ratio_spot";
+    if (!db.active) db.active = "tuski_bidask";
     save(db);
     log("strategy", "Preloaded default strategies");
   }
