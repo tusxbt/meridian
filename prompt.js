@@ -119,34 +119,34 @@ RISK SIGNALS (guidelines — use judgment):
 - rugpull flag from OKX → major negative score penalty and default to SKIP; only override if smart wallets are present and conviction is otherwise high
 - wash trading flag from OKX → treat as disqualifying even if other metrics look attractive
 - PVP symbol conflict (same exact symbol across multiple mints) → major negative. Avoid unless the setup is exceptional and clearly stronger than the competing symbol variants.
-- no narrative + no smart wallets → skip
-- If only one candidate is returned, do not deploy by default. Treat it as "maybe nothing is good enough"; deploy only if it still has a strong narrative, smart-wallet confirmation, and clean pool metrics.
+- no narrative + no smart wallets + low/flat volume → skip. Volume alone CAN justify deploy if high + rising.
+- If only one candidate is returned, deploy if it passes risk signals and has at least ONE of: strong narrative, smart wallets, or high rising volume.
 
-NARRATIVE QUALITY (your main judgment call):
-- GOOD: specific origin — real event, viral moment, named entity, active community
-- BAD: generic hype ("next 100x", "community token") with no identifiable subject
-- Smart wallets present → can override weak narrative, and are the only valid override for an OKX rugpull flag
+NARRATIVE QUALITY (use as one signal among many, not a gate):
+- STRONG: real event, viral moment, named entity, KOL mention, active community
+- WEAK: generic hype ("next 100x", "community token") with no identifiable subject
+- WEAK narrative is acceptable if volume is high AND rising AND fee/TVL is solid
+- Smart wallets present → conviction multiplier; also the only valid override for an OKX rugpull flag
 
 POOL MEMORY: Past losses or problems → strong skip signal.
 
 SELECTION PRIORITY (in order):
-1. NARRATIVE + SMART WALLETS — most important
-   - STRONG: real event, viral moment, named entity, KOL mention, active community
-   - WEAK: generic hype ("next 100x") with no identifiable hook
-   - smart_money_buy = true → conviction multiplier
-   - No narrative AND no smart wallets → SKIP
+1. VOLUME MOMENTUM — most important for degen meme LPs
+   - High volume_window + rising volume_change_pct = real trading activity RIGHT NOW
+   - swap_count high → organic, not wash
+   - Flat or declining volume → timing is likely late, lean toward skip
 
-2. VOLUME — second most important
-   - High volume_window + rising volume_change_pct = momentum RIGHT NOW
-   - swap_count high → real organic trading
-   - Flat or declining volume → timing is late
+2. NARRATIVE + SMART WALLETS — strong positive multiplier
+   - STRONG narrative or smart_money_buy → deploy with confidence
+   - WEAK narrative alone → acceptable if volume is strong
+   - No narrative AND no smart wallets AND low volume → skip
 
-3. FEE EFFICIENCY (fee_active_tvl_ratio) — tiebreaker
+3. FEE EFFICIENCY (fee_active_tvl_ratio) — tiebreaker between similar candidates
 
 INDICATOR SIGNAL RULES:
 - confirmed = true → strong positive.
 - skipped = true (API unavailable) → neutral.
-- indicator_override_required = true → negative. Can deploy if narrative strong + smart_money_buy + volume rising. Never override dead pool.
+- indicator_override_required = true → mild negative. Deploy anyway if volume is high + rising or smart_money_buy is present. Never override a dead/flat pool.
 
 DEPLOY RULES:
 - COMPOUNDING: Use the deploy amount from the goal EXACTLY. Do NOT default to a smaller number.
