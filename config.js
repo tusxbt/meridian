@@ -85,7 +85,7 @@ export const config = {
     maxTop10Pct:       u.maxTop10Pct       ?? 60,  // max top 10 holders concentration
     allowedLaunchpads: u.allowedLaunchpads ?? [],  // allow-list launchpads, [] = no allow-list
     blockedLaunchpads:  u.blockedLaunchpads  ?? [],  // e.g. ["letsbonk.fun", "pump.fun"]
-    minTokenAgeHours:   u.minTokenAgeHours   ?? 6,    // 6h minimum — avoid fresh launches
+    minTokenAgeHours:   u.minTokenAgeHours   ?? 2,    // 2h minimum — avoid brand-new launches
     maxTokenAgeHours:   u.maxTokenAgeHours   ?? null, // null = no maximum
     athFilterPct:       u.athFilterPct       ?? null, // e.g. -20 = only deploy if price is >= 20% below ATH
   },
@@ -199,7 +199,7 @@ export const config = {
       ? indicatorUserConfig.intervals
       : ["5_MINUTE", "15_MINUTE"],
     candles: indicatorUserConfig.candles ?? 298,
-    rsiOversold: indicatorUserConfig.rsiOversold ?? 20,   // RSI(2) ≤ 20 for degen oversold
+    rsiOversold: indicatorUserConfig.rsiOversold ?? 25,   // RSI(2) ≤ 25 for degen oversold
     rsiOverbought: indicatorUserConfig.rsiOverbought ?? 80,
     requireAllIntervals: indicatorUserConfig.requireAllIntervals ?? false,
   },

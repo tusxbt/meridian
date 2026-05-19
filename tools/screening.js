@@ -29,7 +29,7 @@ const PVP_MIN_GLOBAL_FEES_SOL = 30;
 // ── Hardcoded floors — cannot be overridden by user config ──────────────────
 const HARD_MIN_TVL         = 20_000;  // $20k — pool must have meaningful liquidity
 const HARD_MIN_VOLUME      = 2_000;   // $2k per window — active trading required
-const MAX_FEE_VOLUME_RATIO = 0.05;    // 5% — fee/volume above this = likely rewards inflation
+const MAX_FEE_VOLUME_RATIO = 0.10;    // 10% — fee/volume above this = likely rewards inflation
 
 // Correlated quote tokens only — degen meme tokens must pair with SOL/USDC/USDT
 const ALLOWED_QUOTE_MINTS = new Set([
