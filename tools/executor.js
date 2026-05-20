@@ -155,19 +155,9 @@ async function validateDeployPoolThresholds(args) {
     };
   }
 
-  const feeActiveTvlRatio = poolDetailFeeActiveTvlRatio(detail);
-  const minFeeActiveTvlRatio = numberOrNull(config.screening.minFeeActiveTvlRatio);
-  const deployFeeFloor = minFeeActiveTvlRatio != null ? minFeeActiveTvlRatio * 0.1 : 0;
-  if (
-    deployFeeFloor > 0 &&
-    feeActiveTvlRatio != null &&
-    feeActiveTvlRatio < deployFeeFloor
-  ) {
-    return {
-      pass: false,
-      reason: `Pool fee/active-TVL ${feeActiveTvlRatio ?? "unknown"}% is below configured minFeeActiveTvlRatio ${minFeeActiveTvlRatio}%.`,
-    };
-  }
+  // fee/active-TVL is NOT re-checked here — Meteora API momentarily returns 0%
+  // between window transitions (data race), causing false rejections on good pools.
+  // Screening already validated this threshold; no second check needed.
 
   const volatilityTimeframe = getVolatilityTimeframe(config.screening.timeframe || "5m");
   let volatilityDetail = detail;
