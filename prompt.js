@@ -141,6 +141,7 @@ DEPLOY RULES:
 - bins_below = round(${config.strategy.minBinsBelow} + (candidate volatility/5)*${config.strategy.maxBinsBelow - config.strategy.minBinsBelow}) clamped to [${config.strategy.minBinsBelow},${config.strategy.maxBinsBelow}]. bins_above = 0.
 - Bin steps must be [${config.screening.minBinStep}-${config.screening.maxBinStep}].
 - Pick ONE pool only if it qualifies. Otherwise explain why none qualify.
+- Before calling deploy_position, write one line: <deploy_reason>brief reason max 15 words</deploy_reason>
 
 ${weightsSummary ? `${weightsSummary}\nPrioritize candidates whose strongest attributes align with high-weight signals.\n\n` : ""}${lessons ? `LESSONS LEARNED:\n${lessons}\n` : ""}Timestamp: ${new Date().toISOString()}
 `;

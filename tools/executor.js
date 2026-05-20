@@ -49,11 +49,15 @@ let _pendingDeployReason = null;
 let _lastValidatedPoolDetail = null;
 export function setPendingDeployReason(text) {
   if (!text) return;
+  // Priority 1: explicit <deploy_reason> tag
+  const tagMatch = text.match(/<deploy_reason>([\s\S]*?)<\/deploy_reason>/i);
+  if (tagMatch) { _pendingDeployReason = tagMatch[1].trim() || null; return; }
+  // Priority 2: content inside <think> block
   const thinkMatch = text.match(/<think>([\s\S]*?)<\/think>/i);
-  const reason = thinkMatch
-    ? thinkMatch[1].trim()
-    : text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-  _pendingDeployReason = reason || null;
+  if (thinkMatch) { _pendingDeployReason = thinkMatch[1].trim() || null; return; }
+  // Priority 3: last non-empty paragraph of the response (LLM decision summary)
+  const paragraphs = text.replace(/<think>[\s\S]*?<\/think>/gi, "").split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  _pendingDeployReason = paragraphs[paragraphs.length - 1] || null;
 }
 
 const _pendingCloseReasons = new Map();
