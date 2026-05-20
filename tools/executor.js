@@ -47,7 +47,14 @@ import { notifyDeploy, notifyClose, notifySwap } from "../telegram.js";
 
 let _pendingDeployReason = null;
 let _lastValidatedPoolDetail = null;
-export function setPendingDeployReason(text) { _pendingDeployReason = text ? String(text).replace(/<think>[\s\S]*?<\/think>/gi, "").trim() : null; }
+export function setPendingDeployReason(text) {
+  if (!text) return;
+  const thinkMatch = text.match(/<think>([\s\S]*?)<\/think>/i);
+  const reason = thinkMatch
+    ? thinkMatch[1].trim()
+    : text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  _pendingDeployReason = reason || null;
+}
 
 const _pendingCloseReasons = new Map();
 export function setPendingCloseReason(positionAddress, reason) {

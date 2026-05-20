@@ -296,8 +296,15 @@ export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHis
       sawToolCall = true;
 
       // Capture reasoning text for deploy notifications
-      if (msg.content && msg.tool_calls.some(tc => tc.function?.name === "deploy_position")) {
-        setPendingDeployReason(msg.content);
+      if (msg.tool_calls.some(tc => tc.function?.name === "deploy_position")) {
+        // msg.content may be null for tool-only responses — scan back through history for last assistant text
+        const reasonSource = msg.content || (() => {
+          for (let i = messages.length - 2; i >= 0; i--) {
+            if (messages[i].role === "assistant" && messages[i].content) return messages[i].content;
+          }
+          return null;
+        })();
+        if (reasonSource) setPendingDeployReason(reasonSource);
       }
 
       // Execute each tool call in parallel
