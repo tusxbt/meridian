@@ -100,7 +100,11 @@ const TRAILING_DROP_CONFIRM_TOLERANCE_PCT = 1.0;
 /** Strip <think>...</think> reasoning blocks that some models leak into output */
 function stripThink(text) {
   if (!text) return text;
-  return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  // Strip complete <think>...</think> blocks
+  let result = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
+  // Strip everything up to and including an orphan </think> (no matching open tag remains)
+  result = result.replace(/^[\s\S]*?<\/think>\s*/i, "");
+  return result.trim();
 }
 
 function sanitizeUntrustedPromptText(text, maxLen = 500) {

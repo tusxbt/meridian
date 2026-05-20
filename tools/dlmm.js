@@ -577,6 +577,8 @@ export async function deployPosition({
   fee_tvl_ratio,
   organic_score,
   initial_value_usd,
+  volume,
+  tvl,
 }) {
   pool_address = normalizeMint(pool_address);
   const activeStrategy = strategy || config.strategy.strategy;
@@ -858,6 +860,10 @@ export async function deployPosition({
         amount_x: finalAmountX,
         amount_y: finalAmountY,
         txs: normalizeExecutionSignatures(submit),
+        // Pool market metrics echoed back so the agent can format reports
+        fee_tvl_ratio: fee_tvl_ratio ?? null,
+        volume: volume ?? null,
+        tvl: tvl ?? null,
       };
     } catch (error) {
       log("deploy_error", `Relay deploy failed: ${error.message}`);
@@ -989,6 +995,10 @@ export async function deployPosition({
       amount_x: finalAmountX,
       amount_y: finalAmountY,
       txs: txHashes,
+      // Pool market metrics echoed back so the agent can format reports
+      fee_tvl_ratio: fee_tvl_ratio ?? null,
+      volume: volume ?? null,
+      tvl: tvl ?? null,
     };
   } catch (error) {
     log("deploy_error", error.message);
