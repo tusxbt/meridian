@@ -94,10 +94,19 @@ const TRAILING_PEAK_CONFIRM_TOLERANCE = 0.85;
 const TRAILING_DROP_CONFIRM_DELAY_MS = 15_000;
 const TRAILING_DROP_CONFIRM_TOLERANCE_PCT = 1.0;
 
-/** Strip <think>...</think> reasoning blocks that some models leak into output */
+/** Strip <think>...</think> reasoning blocks that some models leak into output.
+ * Handles three patterns:
+ *   1. Complete <think>...</think> pairs
+ *   2. Orphan </think> with no opening tag (model skips the opening tag)
+ *   3. Content between start of string and </think> (leaked reasoning before closing tag)
+ */
 function stripThink(text) {
   if (!text) return text;
-  return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  // Strip complete <think>...</think> blocks (greedy per block, lazy total)
+  let result = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
+  // Strip everything up to and including an orphan </think> (no matching open tag remains)
+  result = result.replace(/^[\s\S]*?<\/think>\s*/i, "");
+  return result.trim();
 }
 
 function sanitizeUntrustedPromptText(text, maxLen = 500) {
@@ -1348,6 +1357,8 @@ async function deployLatestCandidate(index) {
     fee_tvl_ratio: candidate.fee_active_tvl_ratio ?? candidate.fee_tvl_ratio,
     organic_score: candidate.organic_score,
     initial_value_usd: candidate.tvl ?? candidate.active_tvl ?? null,
+    volume: candidate.volume_window ?? candidate.volume_24h ?? null,
+    tvl: candidate.tvl ?? candidate.active_tvl ?? null,
   });
   if (result?.success === false || result?.error) {
     throw new Error(result.error || "Deploy failed");
