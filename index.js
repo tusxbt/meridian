@@ -22,6 +22,7 @@ import {
   editMessageWithButtons,
   answerCallbackQuery,
   notifyOutOfRange,
+  notifyNoDeploy,
   isEnabled as telegramEnabled,
   createLiveMessage,
 } from "./telegram.js";
@@ -741,6 +742,17 @@ IMPORTANT:
         summary: "LLM chose no deploy",
         reason: stripThink(content).slice(0, 500),
       });
+      if (telegramEnabled()) {
+        const clean = stripThink(content);
+        const bestMatch = clean.match(/BEST LOOKING CANDIDATE\s*\n([^\n]+)/i);
+        const whyMatch = clean.match(/WHY SKIPPED\s*\n([\s\S]*?)(?:\n\n|\nREJECTED|$)/i);
+        const rejMatch = clean.match(/REJECTED\s*\n([\s\S]*?)$/i);
+        notifyNoDeploy({
+          bestCandidate: bestMatch?.[1]?.trim(),
+          whySkipped: whyMatch?.[1]?.trim(),
+          rejected: rejMatch?.[1]?.trim(),
+        }).catch(() => {});
+      }
     } else if (!deploySucceeded) {
       appendDecision({
         type: "no_deploy",
@@ -748,6 +760,9 @@ IMPORTANT:
         summary: deployAttempted ? "Deploy attempt did not succeed" : "No successful deploy in screening cycle",
         reason: stripThink(content).slice(0, 500),
       });
+      if (telegramEnabled() && !deployAttempted) {
+        notifyNoDeploy({ whySkipped: "No candidates passed screening filters." }).catch(() => {});
+      }
     }
   } catch (error) {
     log("cron_error", `Screening cycle failed: ${error.message}`);

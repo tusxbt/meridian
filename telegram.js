@@ -398,7 +398,6 @@ export function stopPolling() {
 
 // ─── Notification helpers ────────────────────────────────────────
 export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, rangeCoverage, binStep, baseFee, tvl, volume, feeActiveTvlRatio, reason }) {
-  if (hasActiveLiveMessage()) return;
   const SEP = "──────────────────";
   const reasonText = reason
     ? String(reason).replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/\n+/g, " ").trim().slice(0, 240)
@@ -425,7 +424,6 @@ export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, 
 }
 
 export async function notifyClose({ pair, pnlUsd, pnlPct, reason }) {
-  if (hasActiveLiveMessage()) return;
   const SEP = "──────────────────";
   const sign = (pnlUsd ?? 0) >= 0 ? "+" : "";
   const pnlSign = (pnlPct ?? 0) >= 0 ? "+" : "";
@@ -437,6 +435,15 @@ export async function notifyClose({ pair, pnlUsd, pnlPct, reason }) {
     `💵 PnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${pnlSign}${(pnlPct ?? 0).toFixed(2)}%)` +
     reasonLine
   );
+}
+
+export async function notifyNoDeploy({ bestCandidate, whySkipped, rejected }) {
+  if (!TOKEN || !chatId) return;
+  const SEP = "──────────────────";
+  const best = bestCandidate ? `\n🏆 Best: ${bestCandidate}` : "";
+  const why = whySkipped ? `\n${SEP}\n📋 ${String(whySkipped).slice(0, 200)}` : "";
+  const rej = rejected ? `\n\n❌ ${String(rejected).slice(0, 150)}` : "";
+  await sendHTML(`⛔ <b>NO DEPLOY</b>${best}${why}${rej}`);
 }
 
 export async function notifySwap({ inputSymbol, outputSymbol, amountIn, amountOut, tx }) {
