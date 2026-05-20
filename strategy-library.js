@@ -35,7 +35,7 @@ const DEFAULT_STRATEGIES = {
       min_mcap: 150_000,
       max_mcap: 10_000_000,
       min_holders: 500,
-      min_age_hours: 6,
+      min_age_hours: 2,
       min_organic: 60,
       max_bundlers_pct: 30,
       max_top10_pct: 60,
