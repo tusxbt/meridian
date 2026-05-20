@@ -428,7 +428,10 @@ export async function notifyClose({ pair, pnlUsd, pnlPct, reason }) {
   const sign = (pnlUsd ?? 0) >= 0 ? "+" : "";
   const pnlSign = (pnlPct ?? 0) >= 0 ? "+" : "";
   const emoji = (pnlUsd ?? 0) >= 0 ? "🟢" : "🔴";
-  const reasonLine = reason ? `\n📋 Reason: ${esc(reason)}` : "";
+  const reasonClean = reason
+    ? esc(String(reason).replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/\n+/g, " ").trim().slice(0, 200))
+    : null;
+  const reasonLine = reasonClean ? `\n📋 Reason: ${reasonClean}` : "";
   await sendHTML(
     `${emoji} <b>CLOSED — ${esc(pair)}</b>\n` +
     `${SEP}\n` +
