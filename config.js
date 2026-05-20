@@ -172,10 +172,10 @@ export const config = {
     outOfRangeBinsToClose: u.outOfRangeBinsToClose ?? 10,
     outOfRangeWaitMinutes: u.outOfRangeWaitMinutes ?? 10,
     oorCooldownTriggerCount: u.oorCooldownTriggerCount ?? 5,
-    oorCooldownHours:       u.oorCooldownHours       ?? 3,
+    oorCooldownHours:       u.oorCooldownHours       ?? 1,
     repeatDeployCooldownEnabled: u.repeatDeployCooldownEnabled ?? true,
     repeatDeployCooldownTriggerCount: u.repeatDeployCooldownTriggerCount ?? 5,
-    repeatDeployCooldownHours: u.repeatDeployCooldownHours ?? 3,
+    repeatDeployCooldownHours: u.repeatDeployCooldownHours ?? 1,
     repeatDeployCooldownScope: u.repeatDeployCooldownScope ?? "token", // pool | token | both
     repeatDeployCooldownMinFeeEarnedPct: u.repeatDeployCooldownMinFeeEarnedPct ?? u.repeatDeployCooldownMinFeeYieldPct ?? 0,
     minVolumeToRebalance:  u.minVolumeToRebalance  ?? 1000,
