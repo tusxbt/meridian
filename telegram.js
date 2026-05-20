@@ -400,7 +400,7 @@ export function stopPolling() {
 export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, rangeCoverage, binStep, baseFee, tvl, volume, feeActiveTvlRatio, reason }) {
   const SEP = "──────────────────";
   const reasonText = reason
-    ? String(reason).replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/\n+/g, " ").trim().slice(0, 240)
+    ? esc(String(reason).replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/\n+/g, " ").trim().slice(0, 240))
     : null;
   const reasonBlock = reasonText ? `\n${SEP}\n🎯 ${reasonText}\n` : "\n";
   const downPct = rangeCoverage?.downside_pct != null ? `-${Math.abs(Number(rangeCoverage.downside_pct)).toFixed(2)}%` : "?";
@@ -411,7 +411,7 @@ export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, 
     feeActiveTvlRatio != null ? `Fee/TVL: ${(Number(feeActiveTvlRatio) * 100).toFixed(2)}%` : null,
   ].filter(Boolean).join("  │  ");
   await sendHTML(
-    `🟢 <b>DEPLOYED — ${pair}</b>\n` +
+    `🟢 <b>DEPLOYED — ${esc(pair)}</b>\n` +
     `${SEP}` +
     reasonBlock +
     `${SEP}\n` +
@@ -428,9 +428,9 @@ export async function notifyClose({ pair, pnlUsd, pnlPct, reason }) {
   const sign = (pnlUsd ?? 0) >= 0 ? "+" : "";
   const pnlSign = (pnlPct ?? 0) >= 0 ? "+" : "";
   const emoji = (pnlUsd ?? 0) >= 0 ? "🟢" : "🔴";
-  const reasonLine = reason ? `\n📋 Reason: ${reason}` : "";
+  const reasonLine = reason ? `\n📋 Reason: ${esc(reason)}` : "";
   await sendHTML(
-    `${emoji} <b>CLOSED — ${pair}</b>\n` +
+    `${emoji} <b>CLOSED — ${esc(pair)}</b>\n` +
     `${SEP}\n` +
     `💵 PnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${pnlSign}${(pnlPct ?? 0).toFixed(2)}%)` +
     reasonLine
@@ -461,6 +461,10 @@ export async function notifyOutOfRange({ pair, minutesOOR }) {
     `⚠️ <b>Out of Range</b> ${pair}\n` +
     `Been OOR for ${minutesOOR} minutes`
   );
+}
+
+function esc(str) {
+  return String(str ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function sleep(ms) {
