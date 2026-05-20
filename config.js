@@ -62,11 +62,12 @@ function nonEmptyString(...values) {
 }
 
 function gmgnValue(key, legacyKey, fallback) {
-  return gmgnUserConfig[key] ?? u[legacyKey] ?? fallback;
+  return gmgnUserConfig[key] ?? u.gmgn?.[key] ?? u[legacyKey] ?? fallback;
 }
 
 function gmgnArray(key, legacyKey, fallback) {
   if (Array.isArray(gmgnUserConfig[key])) return gmgnUserConfig[key];
+  if (Array.isArray(u.gmgn?.[key])) return u.gmgn[key];
   if (Array.isArray(u[legacyKey])) return u[legacyKey];
   return fallback;
 }
@@ -153,7 +154,7 @@ export const config = {
     indicatorFilter: gmgnValue("indicatorFilter", "gmgnIndicatorFilter", true),
     indicatorInterval: gmgnValue("indicatorInterval", "gmgnIndicatorInterval", "15_MINUTE"),
     indicatorRules: (() => {
-      const r = gmgnUserConfig.indicatorRules || {};
+      const r = gmgnUserConfig.indicatorRules || u.gmgn?.indicatorRules || {};
       return {
         requireBullishSupertrend: r.requireBullishSupertrend ?? true,
         rejectAlreadyAtBottom:    r.rejectAlreadyAtBottom    ?? true,
