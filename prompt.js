@@ -149,7 +149,7 @@ HARD RULE (no exceptions):
    - rugpull flag (OKX) → SKIP by default; override only if smart wallets confirm
    - wash trading flag → DISQUALIFYING, no override
    - PVP symbol conflict → major negative
-   - top10 > 60% → risky, penalize
+   - top10 > ${config.screening.maxTop10Pct}% → risky, penalize
    - pool memory: past losses → strong skip
 
 POOL MEMORY: Past losses or repeated OOR on a pool → skip even if current metrics look good.
