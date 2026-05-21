@@ -1276,15 +1276,25 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
           log("positions_warn", `PnL API missing data for ${positionAddress.slice(0, 8)} in pool ${pool.poolAddress.slice(0, 8)} — using portfolio only for open-position discovery`);
         }
 
-        // Use binData.isOutOfRange when available — it's position-level and more accurate
-        // than pool.outOfRange which is pool-level and may not reflect per-position status.
-        // Marking must happen AFTER binData is resolved so the OOR timer uses the right source.
-        const positionIsOOR = binData ? binData.isOutOfRange : isOOR;
-        if (positionIsOOR) markOutOfRange(positionAddress);
-        else markInRange(positionAddress);
+        // Compute bin positions first so we can derive OOR from ground-truth bin data.
         const lowerBin  = binData?.lowerBinId      ?? tracked?.bin_range?.min ?? null;
         const upperBin  = binData?.upperBinId      ?? tracked?.bin_range?.max ?? null;
         const activeBin = binData?.poolActiveBinId ?? tracked?.bin_range?.active ?? null;
+
+        // Derive OOR from actual bin positions when available — ground truth.
+        // binData.isOutOfRange can lag or disagree with real bin positions, causing
+        // the OOR timer to reset every cycle even while the price is clearly outside range.
+        // Fall back to API field only when bin positions are unavailable.
+        let positionIsOOR;
+        if (activeBin != null && upperBin != null && lowerBin != null) {
+          positionIsOOR = activeBin > upperBin || activeBin < lowerBin;
+        } else {
+          positionIsOOR = binData ? !!binData.isOutOfRange : !!isOOR;
+        }
+
+        if (positionIsOOR) markOutOfRange(positionAddress);
+        else markInRange(positionAddress);
+
         const lpData = lpAgentByPosition[positionAddress] || null;
 
         const ageFromState = tracked?.deployed_at
@@ -1316,7 +1326,7 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
           lower_bin:          lowerBin,
           upper_bin:          upperBin,
           active_bin:         activeBin,
-          in_range:           binData ? !binData.isOutOfRange : !isOOR,
+          in_range:           !positionIsOOR,
           unclaimed_fees_usd: lpData
             ? Math.round((
                 config.management.solMode
