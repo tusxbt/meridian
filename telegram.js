@@ -409,7 +409,7 @@ export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, 
           .replace(/\n+/g, " ")                          // collapse newlines
           .replace(/\s{2,}/g, " ")                       // collapse spaces
           .trim()
-          .slice(0, 120)                                 // hard cap 120 chars
+          .slice(0, 220)                                 // hard cap 220 chars
       )
     : null;
   const reasonBlock = reasonText ? `\n${SEP}\n🎯 ${reasonText}\n` : "\n";

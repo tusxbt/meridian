@@ -51,15 +51,16 @@ let _lastValidatedPoolDetail = null;
 function _extractShortReason(text) {
   if (!text) return null;
   const cleaned = String(text)
-    .replace(/<\/?[^>]+>/g, "")          // strip all HTML/XML tags
+    .replace(/<\/?[^>]+>/g, "")               // strip all HTML/XML tags
     .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1") // strip **bold** / *italic*
-    .replace(/^[\s\-•*>]+/gm, "")        // strip leading bullets/dashes
-    .replace(/\n+/g, " ")                // collapse newlines
-    .replace(/\s{2,}/g, " ")             // collapse spaces
+    .replace(/^[\s\-•*>]+/gm, "")             // strip leading bullets/dashes
+    .replace(/\n+/g, " ")                      // collapse newlines
+    .replace(/\s{2,}/g, " ")                   // collapse spaces
     .trim();
-  // Take only the first sentence (split on ". " / "! " / "? ")
-  const firstSentence = cleaned.split(/(?<=[.!?])\s+/)[0] || cleaned;
-  return firstSentence.slice(0, 100).trim() || null;
+  // Take first 2-3 sentences (split on sentence boundaries)
+  const sentences = cleaned.split(/(?<=[.!?])\s+/);
+  const excerpt = sentences.slice(0, 3).join(" ");
+  return excerpt.slice(0, 220).trim() || null;
 }
 
 export function setPendingDeployReason(text) {
