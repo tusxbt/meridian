@@ -171,7 +171,8 @@ export const config = {
     minClaimAmount:        u.minClaimAmount        ?? 5,
     autoSwapAfterClaim:    u.autoSwapAfterClaim    ?? false,
     outOfRangeBinsToClose: u.outOfRangeBinsToClose ?? 10,
-    outOfRangeWaitMinutes: u.outOfRangeWaitMinutes ?? 10,
+    outOfRangeWaitMinutes:     u.outOfRangeWaitMinutes     ?? 10, // upside OOR wait before close
+    outOfRangeDownWaitMinutes: u.outOfRangeDownWaitMinutes ?? 30, // downside OOR wait before close
     oorCooldownTriggerCount: u.oorCooldownTriggerCount ?? 5,
     oorCooldownHours:       u.oorCooldownHours       ?? 1,
     repeatDeployCooldownEnabled: u.repeatDeployCooldownEnabled ?? true,
