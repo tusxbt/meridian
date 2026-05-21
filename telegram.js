@@ -399,27 +399,37 @@ export function stopPolling() {
 // ─── Notification helpers ────────────────────────────────────────
 export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, rangeCoverage, binStep, baseFee, tvl, volume, feeActiveTvlRatio, reason }) {
   const SEP = "──────────────────";
-  const reasonText = reason
-    ? esc(
-        String(reason)
-          .replace(/<think>[\s\S]*?<\/think>/gi, "")   // strip <think>
-          .replace(/<\/?[^>]+>/gi, "")                  // strip all HTML/XML tags
-          .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")     // strip **bold** / *italic*
-          .replace(/^[\s\-•*>]+/gm, "")                 // strip leading bullets/dashes per line
-          .replace(/\n+/g, " ")                          // collapse newlines
-          .replace(/\s{2,}/g, " ")                       // collapse spaces
-          .trim()
-          .slice(0, 220)                                 // hard cap 220 chars
-      )
-    : null;
-  const reasonBlock = reasonText ? `\n${SEP}\n🎯 ${reasonText}\n` : "\n";
+
+  let reasonText = null;
+  if (reason) {
+    let r = String(reason)
+      .replace(/<think>[\s\S]*?<\/think>/gi, "")   // strip <think>
+      .replace(/<\/?[^>]+>/gi, "")                  // strip all HTML/XML tags
+      .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")     // strip **bold** / *italic*
+      .replace(/^[\s\-•*>]+/gm, "")                 // strip leading bullets/dashes per line
+      .replace(/\n+/g, " ")                          // collapse newlines
+      .replace(/\s{2,}/g, " ")                       // collapse spaces
+      .trim();
+    // Strip leading "PAIR-NAME: " prefix if LLM echoes pair name at start
+    r = r.replace(new RegExp(`^${pair.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[:\\s–-]+`, "i"), "").trim();
+    // Cut at word boundary, add ellipsis if truncated
+    const CAP = 220;
+    if (r.length > CAP) r = r.slice(0, CAP).replace(/\s+\S*$/, "") + "…";
+    reasonText = esc(r);
+  }
+
+  const reasonBlock = reasonText
+    ? `\n${SEP}\n🎯 <i>${reasonText}</i>\n`
+    : "\n";
+
   const downPct = rangeCoverage?.downside_pct != null ? `-${Math.abs(Number(rangeCoverage.downside_pct)).toFixed(2)}%` : "?";
-  const upPct = rangeCoverage?.upside_pct != null ? `+${Number(rangeCoverage.upside_pct).toFixed(2)}%` : "+0%";
+  const upPct   = rangeCoverage?.upside_pct   != null ? `+${Number(rangeCoverage.upside_pct).toFixed(2)}%` : "+0%";
   const poolDetail = [
-    tvl != null ? `TVL: $${fmtK(tvl)}` : null,
-    volume != null ? `Vol: $${fmtK(volume)}` : null,
-    feeActiveTvlRatio != null ? `Fee/TVL: ${(Number(feeActiveTvlRatio) * 100).toFixed(2)}%` : null,
+    tvl              != null ? `TVL: $${fmtK(tvl)}`                                    : null,
+    volume           != null ? `Vol: $${fmtK(volume)}`                                 : null,
+    feeActiveTvlRatio != null ? `Fee/TVL: ${Number(feeActiveTvlRatio).toFixed(2)}%`    : null,
   ].filter(Boolean).join("  │  ");
+
   await sendHTML(
     `🟢 <b>DEPLOYED — ${esc(pair)}</b>\n` +
     `${SEP}` +
