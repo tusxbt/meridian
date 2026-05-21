@@ -678,9 +678,17 @@ export async function executeTool(name, args) {
               result.auto_swapped = true;
               result.auto_swap_note = `Base token already auto-swapped back to SOL (${token.symbol || result.base_mint.slice(0, 8)} → SOL). Do NOT call swap_token again.`;
               if (swapResult?.amount_out) result.sol_received = swapResult.amount_out;
+            } else if (!token) {
+              log("executor", `Auto-swap skipped: base token ${result.base_mint.slice(0, 8)} not found in wallet (relay may have already converted it)`);
+              result.auto_swap_note = `Base token not found in wallet after close — relay may have already converted it to SOL. Verify wallet balance before calling swap_token.`;
+            } else {
+              log("executor", `Auto-swap skipped: base token ${token.symbol || result.base_mint.slice(0, 8)} value $${token.usd.toFixed(2)} is below $0.10 dust threshold`);
+              result.auto_swap_note = `Base token value $${token.usd.toFixed(2)} is below $0.10 dust threshold — swap skipped.`;
             }
           } catch (e) {
             log("executor_warn", `Auto-swap after close failed: ${e.message}`);
+            result.auto_swap_failed = true;
+            result.auto_swap_note = `Auto-swap failed: ${e.message}. You MUST call swap_token manually to convert base token back to SOL.`;
           }
         }
       } else if (name === "claim_fees" && config.management.autoSwapAfterClaim && result.base_mint) {
