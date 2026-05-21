@@ -660,6 +660,7 @@ export async function executeTool(name, args) {
       if (name === "swap_token" && result.tx) {
         notifySwap({ inputSymbol: args.input_mint?.slice(0, 8), outputSymbol: args.output_mint === "So11111111111111111111111111111111111111112" || args.output_mint === "SOL" ? "SOL" : args.output_mint?.slice(0, 8), amountIn: result.amount_in, amountOut: result.amount_out, tx: result.tx }).catch(() => {});
       } else if (name === "deploy_position") {
+        const _pool = _lastValidatedPoolDetail;
         notifyDeploy({
           pair: result.pool_name || args.pool_name || args.pool_address?.slice(0, 8),
           amountSol: args.amount_y ?? args.amount_sol ?? 0,
@@ -669,9 +670,12 @@ export async function executeTool(name, args) {
           rangeCoverage: result.range_coverage,
           binStep: result.bin_step,
           baseFee: result.base_fee,
-          tvl: _lastValidatedPoolDetail ? poolDetailTvl(_lastValidatedPoolDetail) : null,
-          volume: _lastValidatedPoolDetail?.volume ?? _lastValidatedPoolDetail?.volume_window ?? null,
-          feeActiveTvlRatio: _lastValidatedPoolDetail ? poolDetailFeeActiveTvlRatio(_lastValidatedPoolDetail) : null,
+          tvl: _pool ? poolDetailTvl(_pool) : null,
+          volume: _pool?.volume ?? _pool?.volume_window ?? null,
+          feeActiveTvlRatio: _pool ? poolDetailFeeActiveTvlRatio(_pool) : null,
+          organic: _pool?.organic_score ?? _pool?.token_x?.organic_score ?? null,
+          smartMoney: _pool?.smart_money_buy ?? false,
+          volatility: _pool ? poolDetailVolatility(_pool) : null,
           reason: _pendingDeployReason,
         }).catch(() => {});
         _pendingDeployReason = null;

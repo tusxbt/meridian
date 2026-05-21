@@ -397,47 +397,50 @@ export function stopPolling() {
 }
 
 // ─── Notification helpers ────────────────────────────────────────
-export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, rangeCoverage, binStep, baseFee, tvl, volume, feeActiveTvlRatio, reason }) {
+export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, rangeCoverage, binStep, baseFee, tvl, volume, feeActiveTvlRatio, organic, smartMoney, volatility, reason }) {
   const SEP = "──────────────────";
 
-  let reasonText = null;
-  if (reason) {
+  // Build "why this won" from structured pool data — clean, always consistent
+  const whyParts = [
+    feeActiveTvlRatio != null ? `Fee/TVL ${Number(feeActiveTvlRatio).toFixed(2)}%` : null,
+    volume            != null ? `Vol $${fmtK(volume)}`                              : null,
+    organic           != null ? `Organic ${Math.round(organic)}`                    : null,
+    volatility        != null ? `Vol. ${Number(volatility).toFixed(1)}σ`            : null,
+    smartMoney                ? `Smart money ✓`                                     : null,
+  ].filter(Boolean);
+
+  // Fallback: clean LLM reason if no structured data
+  let whyLine = null;
+  if (whyParts.length > 0) {
+    whyLine = esc(whyParts.join("  ·  "));
+  } else if (reason) {
     let r = String(reason)
-      .replace(/<think>[\s\S]*?<\/think>/gi, "")   // strip <think>
-      .replace(/<\/?[^>]+>/gi, "")                  // strip all HTML/XML tags
-      .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")     // strip **bold** / *italic*
-      .replace(/^[\s\-•*>]+/gm, "")                 // strip leading bullets/dashes per line
-      .replace(/\n+/g, " ")                          // collapse newlines
-      .replace(/\s{2,}/g, " ")                       // collapse spaces
-      .trim();
-    // Strip leading "PAIR-NAME: " prefix if LLM echoes pair name at start
+      .replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<\/?[^>]+>/gi, "")
+      .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1").replace(/^[\s\-•*>]+/gm, "")
+      .replace(/\n+/g, " ").replace(/\s{2,}/g, " ").trim();
     r = r.replace(new RegExp(`^${pair.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[:\\s–-]+`, "i"), "").trim();
-    // Cut at word boundary, add ellipsis if truncated
-    const CAP = 220;
-    if (r.length > CAP) r = r.slice(0, CAP).replace(/\s+\S*$/, "") + "…";
-    reasonText = esc(r);
+    if (r.length > 160) r = r.slice(0, 160).replace(/\s+\S*$/, "") + "…";
+    whyLine = esc(r);
   }
 
-  const reasonBlock = reasonText
-    ? `\n${SEP}\n🎯 <i>${reasonText}</i>\n`
-    : "\n";
+  const whyBlock = whyLine ? `\n🏆 <b>Why this won</b>\n${whyLine}\n` : "\n";
 
   const downPct = rangeCoverage?.downside_pct != null ? `-${Math.abs(Number(rangeCoverage.downside_pct)).toFixed(2)}%` : "?";
   const upPct   = rangeCoverage?.upside_pct   != null ? `+${Number(rangeCoverage.upside_pct).toFixed(2)}%` : "+0%";
-  const poolDetail = [
-    tvl              != null ? `TVL: $${fmtK(tvl)}`                                    : null,
-    volume           != null ? `Vol: $${fmtK(volume)}`                                 : null,
-    feeActiveTvlRatio != null ? `Fee/TVL: ${Number(feeActiveTvlRatio).toFixed(2)}%`    : null,
+  const poolStats = [
+    tvl              != null ? `TVL $${fmtK(tvl)}`                              : null,
+    volume           != null ? `Vol $${fmtK(volume)}`                           : null,
+    feeActiveTvlRatio != null ? `Fee/TVL ${Number(feeActiveTvlRatio).toFixed(2)}%` : null,
   ].filter(Boolean).join("  │  ");
 
   await sendHTML(
     `🟢 <b>DEPLOYED — ${esc(pair)}</b>\n` +
     `${SEP}` +
-    reasonBlock +
+    whyBlock +
     `${SEP}\n` +
     `💰 ${Number(amountSol).toFixed(3)} SOL  │  Step: ${binStep ?? "?"}  │  Fee: ${baseFee != null ? baseFee + "%" : "?"}\n` +
     `📐 Range: ${downPct} / ${upPct}\n` +
-    (poolDetail ? `📊 ${poolDetail}\n` : "") +
+    (poolStats ? `📊 ${poolStats}\n` : "") +
     `🔑 <code>${position?.slice(0, 22) ?? "?"}…</code>\n` +
     `📜 Tx: <code>${tx?.slice(0, 22) ?? "?"}…</code>`
   );
