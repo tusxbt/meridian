@@ -244,27 +244,24 @@ function evaluatePreset(side, preset, payload) {
         : summary.macdBullish;
       const middleCrossed = crossedUp(middleBand);
       const rsiRecovered = rsi != null && rsi >= 50;
+      // 2-of-3 voting: confirmed if at least 2 conditions are met
+      const entryHits = [bbLower, rsiOversoldOk, macdTurning];
+      const entryScore = entryHits.filter(Boolean).length;
+      const exitHits = [middleCrossed, rsiRecovered, macdPositive];
+      const exitScore = exitHits.filter(Boolean).length;
       return side === "entry"
         ? {
-            confirmed: bbLower && rsiOversoldOk && macdTurning,
-            reason: bbLower && rsiOversoldOk && macdTurning
-              ? `BB lower touch + RSI(2) ${rsi?.toFixed(1) ?? "n/a"} ≤ ${oversold} + MACD turning positive (${summary.macdHistogram?.toFixed(4) ?? "n/a"})`
-              : !bbLower
-                ? `Price ${close ?? "n/a"} above lower band ${lowerBand ?? "n/a"}`
-                : !rsiOversoldOk
-                  ? `RSI(2) ${rsi ?? "n/a"} not oversold (need ≤ ${oversold})`
-                  : `MACD histogram not yet positive (${summary.macdHistogram?.toFixed(4) ?? "n/a"})`,
+            confirmed: entryScore >= 2,
+            reason: entryScore >= 2
+              ? `bb_rsi_macd entry: ${entryScore}/3 — BB:${bbLower ? "✓" : "✗"} RSI(2)${rsi?.toFixed(1) ?? "n/a"}:${rsiOversoldOk ? "✓" : "✗"} MACD:${macdTurning ? "✓" : "✗"}`
+              : `bb_rsi_macd entry: only ${entryScore}/3 — BB:${bbLower ? "✓" : "✗"} RSI(2)${rsi?.toFixed(1) ?? "n/a"}:${rsiOversoldOk ? "✓" : "✗"} MACD:${macdTurning ? "✓" : "✗"}`,
             signal: summary,
           }
         : {
-            confirmed: middleCrossed && rsiRecovered && macdPositive,
-            reason: middleCrossed && rsiRecovered && macdPositive
-              ? `BB middle reclaimed + RSI(2) ${rsi?.toFixed(1) ?? "n/a"} ≥ 50 + MACD histogram positive`
-              : !middleCrossed
-                ? `Price ${close ?? "n/a"} has not crossed above middle band ${middleBand ?? "n/a"}`
-                : !rsiRecovered
-                  ? `RSI(2) ${rsi ?? "n/a"} not recovered (need ≥ 50)`
-                  : `MACD histogram not positive (${summary.macdHistogram?.toFixed(4) ?? "n/a"})`,
+            confirmed: exitScore >= 2,
+            reason: exitScore >= 2
+              ? `bb_rsi_macd exit: ${exitScore}/3 — Middle:${middleCrossed ? "✓" : "✗"} RSI(2)${rsi?.toFixed(1) ?? "n/a"}:${rsiRecovered ? "✓" : "✗"} MACD:${macdPositive ? "✓" : "✗"}`
+              : `bb_rsi_macd exit: only ${exitScore}/3 — Middle:${middleCrossed ? "✓" : "✗"} RSI(2)${rsi?.toFixed(1) ?? "n/a"}:${rsiRecovered ? "✓" : "✗"} MACD:${macdPositive ? "✓" : "✗"}`,
             signal: summary,
           };
     }
