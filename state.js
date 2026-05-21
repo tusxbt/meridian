@@ -455,6 +455,30 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
 // ─── Briefing Tracking ─────────────────────────────────────────
 
 /**
+ * Update per-position peak metrics used for collapse detection.
+ * Called each management cycle after positions are fetched.
+ */
+export function updatePositionPeaks(position_address, positionData) {
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed) return;
+  let changed = false;
+  if (positionData.fee_per_tvl_24h != null && positionData.fee_per_tvl_24h > 0) {
+    if (pos.peak_fee_per_tvl_24h == null || positionData.fee_per_tvl_24h > pos.peak_fee_per_tvl_24h) {
+      pos.peak_fee_per_tvl_24h = positionData.fee_per_tvl_24h;
+      changed = true;
+    }
+  }
+  if (positionData.total_value_usd != null && positionData.total_value_usd > 0) {
+    if (pos.peak_total_value_usd == null || positionData.total_value_usd > pos.peak_total_value_usd) {
+      pos.peak_total_value_usd = positionData.total_value_usd;
+      changed = true;
+    }
+  }
+  if (changed) save(state);
+}
+
+/**
  * Get the date (YYYY-MM-DD UTC) when the last briefing was sent.
  */
 export function getLastBriefingDate() {

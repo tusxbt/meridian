@@ -110,6 +110,9 @@ export const config = {
     minFeePerTvl24h:       u.minFeePerTvl24h       ?? 7,
     minAgeBeforeYieldCheck: u.minAgeBeforeYieldCheck ?? 50, // minutes before low yield can trigger close
     maxHoldMinutes:         u.maxHoldMinutes         ?? 720,  // 720 = 12h max hold (LP Army standard)
+    collapseCheckMinAge:    u.collapseCheckMinAge    ?? 30,   // min age (minutes) before collapse rules fire
+    volumeCollapseDropPct:  u.volumeCollapseDropPct  ?? 75,   // close if fee/TVL drops X% from peak
+    tvlCollapseDropPct:     u.tvlCollapseDropPct     ?? 50,   // close if position value drops X% from peak (in-range only)
     minSolToOpen:          u.minSolToOpen          ?? 0.55,
     deployAmountSol:       u.deployAmountSol       ?? 0.5,
     gasReserve:            u.gasReserve            ?? 0.2,

@@ -25,7 +25,7 @@ import {
   createLiveMessage,
 } from "./telegram.js";
 import { generateBriefing } from "./briefing.js";
-import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, setPositionInstruction, updatePnlAndCheckExits, queuePeakConfirmation, resolvePendingPeak, queueTrailingDropConfirmation, resolvePendingTrailingDrop } from "./state.js";
+import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, setPositionInstruction, updatePnlAndCheckExits, updatePositionPeaks, queuePeakConfirmation, resolvePendingPeak, queueTrailingDropConfirmation, resolvePendingTrailingDrop } from "./state.js";
 import { getActiveStrategy } from "./strategy-library.js";
 import { recordPositionSnapshot, recallForPool, addPoolNote } from "./pool-memory.js";
 import { checkSmartWalletsOnPool } from "./smart-wallets.js";
@@ -246,6 +246,7 @@ export async function runManagementCycle({ silent = false } = {}) {
         schedulePeakConfirmation(p.position);
       }
       const exit = updatePnlAndCheckExits(p.position, p, config.management);
+      updatePositionPeaks(p.position, p);
       if (exit) {
         if (exit.action === "TRAILING_TP" && exit.needs_confirmation && shouldUsePnlRecheck()) {
           if (queueTrailingDropConfirmation(p.position, exit.peak_pnl_pct, exit.current_pnl_pct, config.management.trailingDropPct)) {
@@ -946,6 +947,32 @@ function getDeterministicCloseRule(position, managementConfig) {
     position.age_minutes >= managementConfig.maxHoldMinutes
   ) {
     return { action: "CLOSE", rule: 6, reason: "max hold time" };
+  }
+  // Rule 7: Volume collapse — fee/TVL dropped significantly from its peak
+  const collapseMinAge = managementConfig.collapseCheckMinAge ?? 30;
+  if (
+    managementConfig.volumeCollapseDropPct != null &&
+    tracked?.peak_fee_per_tvl_24h != null &&
+    position.fee_per_tvl_24h != null &&
+    (position.age_minutes ?? 0) >= collapseMinAge
+  ) {
+    const drop = ((tracked.peak_fee_per_tvl_24h - position.fee_per_tvl_24h) / tracked.peak_fee_per_tvl_24h) * 100;
+    if (drop >= managementConfig.volumeCollapseDropPct) {
+      return { action: "CLOSE", rule: 7, reason: `volume collapse: fee/TVL dropped ${drop.toFixed(0)}% from peak ${tracked.peak_fee_per_tvl_24h.toFixed(2)}%` };
+    }
+  }
+  // Rule 8: TVL collapse — position value dropped significantly from its peak (in-range only)
+  if (
+    managementConfig.tvlCollapseDropPct != null &&
+    tracked?.peak_total_value_usd != null &&
+    position.total_value_usd != null &&
+    position.in_range &&
+    (position.age_minutes ?? 0) >= collapseMinAge
+  ) {
+    const drop = ((tracked.peak_total_value_usd - position.total_value_usd) / tracked.peak_total_value_usd) * 100;
+    if (drop >= managementConfig.tvlCollapseDropPct) {
+      return { action: "CLOSE", rule: 8, reason: `TVL collapse: position value dropped ${drop.toFixed(0)}% from peak $${tracked.peak_total_value_usd.toFixed(2)}` };
+    }
   }
   return null;
 }

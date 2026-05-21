@@ -395,6 +395,9 @@ const toolMap = {
       positionSizePct: ["management", "positionSizePct"],
       minAgeBeforeYieldCheck: ["management", "minAgeBeforeYieldCheck"],
       maxHoldMinutes:         ["management", "maxHoldMinutes"],
+      collapseCheckMinAge:    ["management", "collapseCheckMinAge"],
+      volumeCollapseDropPct:  ["management", "volumeCollapseDropPct"],
+      tvlCollapseDropPct:     ["management", "tvlCollapseDropPct"],
       // risk
       maxPositions: ["risk", "maxPositions"],
       maxDeployAmount: ["risk", "maxDeployAmount"],
