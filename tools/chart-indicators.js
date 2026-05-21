@@ -229,6 +229,45 @@ function evaluatePreset(side, preset, payload) {
             signal: summary,
           };
     }
+    case "bb_rsi_macd": {
+      // Entry: BB lower touch + RSI(2) oversold + MACD histogram turning positive
+      // Exit:  BB middle band reclaimed + RSI(2) >= 50 + MACD histogram positive
+      const middleBand = summary.middleBand;
+      const bbLower = close != null && lowerBand != null && close <= lowerBand;
+      const rsiOversoldOk = rsi != null && rsi <= oversold;
+      // MACD turning: histogram just crossed zero (>= 0) or bullish cross state
+      const macdTurning = summary.macdHistogram != null
+        ? summary.macdHistogram >= 0
+        : (summary.macdBullish || summary.macdCross);
+      const macdPositive = summary.macdHistogram != null
+        ? summary.macdHistogram > 0
+        : summary.macdBullish;
+      const middleCrossed = crossedUp(middleBand);
+      const rsiRecovered = rsi != null && rsi >= 50;
+      return side === "entry"
+        ? {
+            confirmed: bbLower && rsiOversoldOk && macdTurning,
+            reason: bbLower && rsiOversoldOk && macdTurning
+              ? `BB lower touch + RSI(2) ${rsi?.toFixed(1) ?? "n/a"} ≤ ${oversold} + MACD turning positive (${summary.macdHistogram?.toFixed(4) ?? "n/a"})`
+              : !bbLower
+                ? `Price ${close ?? "n/a"} above lower band ${lowerBand ?? "n/a"}`
+                : !rsiOversoldOk
+                  ? `RSI(2) ${rsi ?? "n/a"} not oversold (need ≤ ${oversold})`
+                  : `MACD histogram not yet positive (${summary.macdHistogram?.toFixed(4) ?? "n/a"})`,
+            signal: summary,
+          }
+        : {
+            confirmed: middleCrossed && rsiRecovered && macdPositive,
+            reason: middleCrossed && rsiRecovered && macdPositive
+              ? `BB middle reclaimed + RSI(2) ${rsi?.toFixed(1) ?? "n/a"} ≥ 50 + MACD histogram positive`
+              : !middleCrossed
+                ? `Price ${close ?? "n/a"} has not crossed above middle band ${middleBand ?? "n/a"}`
+                : !rsiRecovered
+                  ? `RSI(2) ${rsi ?? "n/a"} not recovered (need ≥ 50)`
+                  : `MACD histogram not positive (${summary.macdHistogram?.toFixed(4) ?? "n/a"})`,
+            signal: summary,
+          };
+    }
     default:
       return {
         confirmed: false,
