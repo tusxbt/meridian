@@ -16,5 +16,21 @@ module.exports = {
         NODE_ENV: "production",
       },
     },
+    {
+      name: "meridian-dashboard",
+      script: "dashboard/server.js",
+      cwd: __dirname,
+      interpreter: "node",
+      instances: 1,
+      exec_mode: "fork",
+      autorestart: true,
+      restart_delay: 3000,
+      max_restarts: 10,
+      min_uptime: "10s",
+      env: {
+        NODE_ENV: "production",
+        DASHBOARD_PORT: "3456",
+      },
+    },
   ],
 };
