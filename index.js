@@ -923,15 +923,15 @@ function getDeterministicCloseRule(position, managementConfig) {
   ) {
     return { action: "CLOSE", rule: 3, reason: "pumped far above range" };
   }
-  // Rule 4: OOR wait — fires for both upside (active > upper) AND downside (active < lower)
+  // Rule 4: OOR wait — upside and downside use separate wait thresholds
   const isOORUp   = position.active_bin != null && position.upper_bin != null && position.active_bin > position.upper_bin;
   const isOORDown = position.active_bin != null && position.lower_bin != null && position.active_bin < position.lower_bin;
-  if (
-    (isOORUp || isOORDown) &&
-    (position.minutes_out_of_range ?? 0) >= managementConfig.outOfRangeWaitMinutes
-  ) {
-    const dir = isOORUp ? "upside" : "downside";
-    return { action: "CLOSE", rule: 4, reason: `OOR ${dir}` };
+  const minsOOR   = position.minutes_out_of_range ?? 0;
+  if (isOORUp && minsOOR >= managementConfig.outOfRangeWaitMinutes) {
+    return { action: "CLOSE", rule: 4, reason: "OOR upside" };
+  }
+  if (isOORDown && minsOOR >= (managementConfig.outOfRangeDownWaitMinutes ?? 30)) {
+    return { action: "CLOSE", rule: 4, reason: "OOR downside" };
   }
   if (
     position.fee_per_tvl_24h != null &&
