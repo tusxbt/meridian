@@ -1696,7 +1696,7 @@ export async function closePosition({ position_address, reason }) {
             position: position_address,
             pool: poolAddress,
             pool_name: tracked.pool_name || poolMeta.name || poolAddress.slice(0, 8),
-            base_mint: livePosition?.base_mint || null,
+            base_mint: livePosition?.base_mint || pool.lbPair.tokenXMint.toString(),
             strategy: tracked.strategy,
             bin_range: tracked.bin_range,
             bin_step: tracked.bin_step || null,
@@ -1744,7 +1744,7 @@ export async function closePosition({ position_address, reason }) {
             txs: txHashes,
             pnl_usd: pnlUsd,
             pnl_pct: pnlPct,
-            base_mint: livePosition?.base_mint || null,
+            base_mint: livePosition?.base_mint || pool.lbPair.tokenXMint.toString(),
           };
         }
 
@@ -1769,7 +1769,7 @@ export async function closePosition({ position_address, reason }) {
           claim_txs: claimTxHashes,
           close_txs: closeTxHashes,
           txs: txHashes,
-          base_mint: livePosition?.base_mint || null,
+          base_mint: livePosition?.base_mint || pool.lbPair.tokenXMint.toString(),
         };
       } catch (relayError) {
         if (relaySubmitted) throw relayError;
