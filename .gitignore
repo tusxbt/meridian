@@ -12,6 +12,7 @@ user-config.json
 gmgn-config.json
 
 # Runtime state (position tracking, lessons — user-specific)
+dashboard-state.json
 state.json
 lessons.json
 smart-wallets.json

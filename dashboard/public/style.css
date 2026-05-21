@@ -1,0 +1,15 @@
+/* Minimal additional styles beyond Tailwind */
+@media (max-width: 768px) {
+  #sidebar {
+    position: fixed;
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+  #sidebar.open {
+    transform: translateX(0);
+  }
+  body {
+    flex-direction: column;
+  }
+}

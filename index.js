@@ -37,6 +37,7 @@ import { stageSignals } from "./signal-tracker.js";
 import { getWeightsSummary } from "./signal-weights.js";
 import { bootstrapHiveMind, ensureAgentId, getHiveMindPullMode, isHiveMindEnabled, pullHiveMindLessons, pullHiveMindPresets, registerHiveMindAgent, startHiveMindBackgroundSync } from "./hivemind.js";
 import { appendDecision } from "./decision-log.js";
+import { writeDashboardState as _writeDashboardState } from "./dashboard-state-writer.js";
 
 const entrypointPath = process.env.pm_exec_path || process.argv[1];
 const isMain = entrypointPath
@@ -89,6 +90,16 @@ let _cronTasks = [];
 let _managementBusy = false; // prevents overlapping management cycles
 let _screeningBusy = false;  // prevents overlapping screening cycles
 let _screeningLastTriggered = 0; // epoch ms — prevents management from spamming screening
+
+// Dashboard state writer — decoupled dashboard reads this file
+setInterval(() => {
+  _writeDashboardState({
+    managementLastRun: timers.managementLastRun,
+    screeningLastRun: timers.screeningLastRun,
+    managementBusy: _managementBusy,
+    screeningBusy: _screeningBusy,
+  });
+}, 10_000);
 let _pollTriggeredAt = 0; // epoch ms — cooldown for poller-triggered management
 const _peakConfirmTimers = new Map();
 const _trailingDropConfirmTimers = new Map();

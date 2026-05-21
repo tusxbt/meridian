@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meridian Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 500: '#8b5cf6', 600: '#7c3aed', 700: '#6d28d9' },
+            surface: { 800: '#1e1e2e', 900: '#11111b', 700: '#313244' },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #11111b; color: #cdd6f4; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #1e1e2e; }
+    ::-webkit-scrollbar-thumb { background: #45475a; border-radius: 3px; }
+    .nav-link { transition: all 0.15s; }
+    .nav-link:hover, .nav-link.active { background: #313244; color: #cba6f7; }
+    .card { background: #1e1e2e; border: 1px solid #313244; border-radius: 12px; }
+    .badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 9999px; font-weight: 500; }
+    .badge-green { background: #1e3a2f; color: #a6e3a1; }
+    .badge-red { background: #3e1a1a; color: #f38ba8; }
+    .badge-yellow { background: #3a3219; color: #f9e2af; }
+    .badge-purple { background: #2d1f4e; color: #cba6f7; }
+    .badge-blue { background: #1a2d4e; color: #89b4fa; }
+    .stat-value { font-size: 1.75rem; font-weight: 700; line-height: 1; }
+    .range-bar { height: 8px; border-radius: 4px; background: #313244; position: relative; overflow: hidden; }
+    .range-fill { height: 100%; border-radius: 4px; }
+    .range-marker { position: absolute; top: -2px; width: 3px; height: 12px; background: #cdd6f4; border-radius: 2px; }
+    .terminal-output { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.8rem; line-height: 1.5; }
+    .terminal-input { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    .fade-in { animation: fadeIn 0.2s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .pulse-dot { animation: pulse-dot 2s infinite; }
+    .toast { position: fixed; bottom: 20px; right: 20px; z-index: 9999; }
+  </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+  <!-- Login Screen -->
+  <div id="login-screen" class="hidden fixed inset-0 z-50 flex items-center justify-center" style="background:#11111b">
+    <div class="card p-8 w-full max-w-sm">
+      <div class="text-center mb-6">
+        <h1 class="text-2xl font-bold text-[#cba6f7]">Meridian</h1>
+        <p class="text-sm text-[#6c7086] mt-1">Dashboard Login</p>
+      </div>
+      <form id="login-form">
+        <input type="password" id="login-password" placeholder="Password"
+          class="w-full px-4 py-3 rounded-lg bg-[#313244] border border-[#45475a] text-[#cdd6f4] placeholder-[#6c7086] focus:outline-none focus:border-[#cba6f7] mb-4">
+        <button type="submit"
+          class="w-full py-3 rounded-lg bg-[#cba6f7] text-[#11111b] font-semibold hover:bg-[#b4befe] transition">
+          Login
+        </button>
+        <p id="login-error" class="text-[#f38ba8] text-sm mt-3 text-center hidden"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <nav id="sidebar" class="hidden w-56 flex-shrink-0 bg-[#1e1e2e] border-r border-[#313244] flex flex-col">
+    <div class="p-4 border-b border-[#313244]">
+      <h1 class="text-lg font-bold text-[#cba6f7]">Meridian</h1>
+      <p class="text-xs text-[#6c7086]" id="nav-status">Connecting...</p>
+    </div>
+    <div class="flex-1 overflow-y-auto py-2">
+      <a href="#/" class="nav-link flex items-center gap-3 px-4 py-2.5 text-sm">
+        <span class="w-5 text-center">&#9632;</span> Dashboard
+      </a>
+      <a href="#/positions" class="nav-link flex items-center gap-3 px-4 py-2.5 text-sm">
+        <span class="w-5 text-center">&#9654;</span> Positions
+      </a>
+      <a href="#/terminal" class="nav-link flex items-center gap-3 px-4 py-2.5 text-sm">
+        <span class="w-5 text-center">&gt;_</span> Terminal
+      </a>
+      <a href="#/performance" class="nav-link flex items-center gap-3 px-4 py-2.5 text-sm">
+        <span class="w-5 text-center">&#9650;</span> Performance
+      </a>
+      <a href="#/lessons" class="nav-link flex items-center gap-3 px-4 py-2.5 text-sm">
+        <span class="w-5 text-center">&#9733;</span> Lessons
+      </a>
+      <a href="#/config" class="nav-link flex items-center gap-3 px-4 py-2.5 text-sm">
+        <span class="w-5 text-center">&#9881;</span> Config
+      </a>
+      <a href="#/decisions" class="nav-link flex items-center gap-3 px-4 py-2.5 text-sm">
+        <span class="w-5 text-center">&#8634;</span> Decisions
+      </a>
+      <a href="#/pools" class="nav-link flex items-center gap-3 px-4 py-2.5 text-sm">
+        <span class="w-5 text-center">&#9673;</span> Pools
+      </a>
+      <a href="#/strategies" class="nav-link flex items-center gap-3 px-4 py-2.5 text-sm">
+        <span class="w-5 text-center">&#9670;</span> Strategies
+      </a>
+    </div>
+    <!-- Status Bar -->
+    <div id="status-bar" class="p-3 border-t border-[#313244] text-xs space-y-1">
+      <div class="flex justify-between">
+        <span class="text-[#6c7086]">SOL</span>
+        <span id="status-sol" class="text-[#a6e3a1]">--</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-[#6c7086]">Positions</span>
+        <span id="status-positions">--</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-[#6c7086]">Mgmt</span>
+        <span id="status-mgmt" class="text-[#89b4fa]">--</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-[#6c7086]">Screen</span>
+        <span id="status-screen" class="text-[#89b4fa]">--</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main id="main-content" class="hidden flex-1 overflow-y-auto p-6">
+    <div id="app"></div>
+  </main>
+
+  <!-- Toast container -->
+  <div id="toast-container" class="toast"></div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
