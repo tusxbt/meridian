@@ -47,19 +47,34 @@ import { notifyDeploy, notifyClose, notifySwap } from "../telegram.js";
 
 let _pendingDeployReason = null;
 let _lastValidatedPoolDetail = null;
+
+function _extractShortReason(text) {
+  if (!text) return null;
+  const cleaned = String(text)
+    .replace(/<\/?[^>]+>/g, "")          // strip all HTML/XML tags
+    .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1") // strip **bold** / *italic*
+    .replace(/^[\s\-•*>]+/gm, "")        // strip leading bullets/dashes
+    .replace(/\n+/g, " ")                // collapse newlines
+    .replace(/\s{2,}/g, " ")             // collapse spaces
+    .trim();
+  // Take only the first sentence (split on ". " / "! " / "? ")
+  const firstSentence = cleaned.split(/(?<=[.!?])\s+/)[0] || cleaned;
+  return firstSentence.slice(0, 100).trim() || null;
+}
+
 export function setPendingDeployReason(text) {
   if (!text) return;
   // Priority 1: explicit <deploy_reason> tag — max 15 words, always clean
   const tagMatch = text.match(/<deploy_reason>([\s\S]*?)<\/deploy_reason>/i);
   if (tagMatch) { _pendingDeployReason = tagMatch[1].trim() || null; return; }
-  // Priority 2: content inside <think> block — skip (too verbose for notification)
-  // Priority 3: first sentence of last non-empty paragraph (capped at 100 chars)
-  const clean = text.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<\/?[^>]+>/g, "");
+  // Priority 2: first sentence from <think> block (if present)
+  const thinkMatch = text.match(/<think>([\s\S]*?)<\/think>/i);
+  if (thinkMatch) { _pendingDeployReason = _extractShortReason(thinkMatch[1]); return; }
+  // Priority 3: first sentence of last non-empty paragraph (plain text fallback)
+  const clean = text.replace(/<\/?[^>]+>/g, "");
   const paragraphs = clean.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
   const lastPara = paragraphs[paragraphs.length - 1] || "";
-  // Take only the first sentence (up to first period/exclamation/question)
-  const firstSentence = lastPara.split(/(?<=[.!?])\s/)[0] || lastPara;
-  _pendingDeployReason = firstSentence.slice(0, 100).trim() || null;
+  _pendingDeployReason = _extractShortReason(lastPara);
 }
 
 const _pendingCloseReasons = new Map();
