@@ -1158,14 +1158,18 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
         const tracked = getTrackedPosition(positionAddress);
         const isOOR = pool.outOfRange || pool.positionsOutOfRange?.includes(positionAddress);
 
-        if (isOOR) markOutOfRange(positionAddress);
-        else markInRange(positionAddress);
-
         // Bin data: from supplemental PnL call (OOR) or tracked state (in-range)
         const binData = binDataByPool[pool.poolAddress]?.[positionAddress];
         if (!binData) {
           log("positions_warn", `PnL API missing data for ${positionAddress.slice(0, 8)} in pool ${pool.poolAddress.slice(0, 8)} — using portfolio only for open-position discovery`);
         }
+
+        // Use binData.isOutOfRange when available — it's position-level and more accurate
+        // than pool.outOfRange which is pool-level and may not reflect per-position status.
+        // Marking must happen AFTER binData is resolved so the OOR timer uses the right source.
+        const positionIsOOR = binData ? binData.isOutOfRange : isOOR;
+        if (positionIsOOR) markOutOfRange(positionAddress);
+        else markInRange(positionAddress);
         const lowerBin  = binData?.lowerBinId      ?? tracked?.bin_range?.min ?? null;
         const upperBin  = binData?.upperBinId      ?? tracked?.bin_range?.max ?? null;
         const activeBin = binData?.poolActiveBinId ?? tracked?.bin_range?.active ?? null;
