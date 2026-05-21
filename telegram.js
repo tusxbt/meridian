@@ -400,7 +400,17 @@ export function stopPolling() {
 export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, rangeCoverage, binStep, baseFee, tvl, volume, feeActiveTvlRatio, reason }) {
   const SEP = "──────────────────";
   const reasonText = reason
-    ? esc(String(reason).replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<\/?deploy_reason>/gi, "").replace(/\n+/g, " ").trim().slice(0, 240))
+    ? esc(
+        String(reason)
+          .replace(/<think>[\s\S]*?<\/think>/gi, "")   // strip <think>
+          .replace(/<\/?[^>]+>/gi, "")                  // strip all HTML/XML tags
+          .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")     // strip **bold** / *italic*
+          .replace(/^[\s\-•*>]+/gm, "")                 // strip leading bullets/dashes per line
+          .replace(/\n+/g, " ")                          // collapse newlines
+          .replace(/\s{2,}/g, " ")                       // collapse spaces
+          .trim()
+          .slice(0, 120)                                 // hard cap 120 chars
+      )
     : null;
   const reasonBlock = reasonText ? `\n${SEP}\n🎯 ${reasonText}\n` : "\n";
   const downPct = rangeCoverage?.downside_pct != null ? `-${Math.abs(Number(rangeCoverage.downside_pct)).toFixed(2)}%` : "?";

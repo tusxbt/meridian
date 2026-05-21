@@ -49,15 +49,17 @@ let _pendingDeployReason = null;
 let _lastValidatedPoolDetail = null;
 export function setPendingDeployReason(text) {
   if (!text) return;
-  // Priority 1: explicit <deploy_reason> tag
+  // Priority 1: explicit <deploy_reason> tag — max 15 words, always clean
   const tagMatch = text.match(/<deploy_reason>([\s\S]*?)<\/deploy_reason>/i);
   if (tagMatch) { _pendingDeployReason = tagMatch[1].trim() || null; return; }
-  // Priority 2: content inside <think> block
-  const thinkMatch = text.match(/<think>([\s\S]*?)<\/think>/i);
-  if (thinkMatch) { _pendingDeployReason = thinkMatch[1].trim() || null; return; }
-  // Priority 3: last non-empty paragraph of the response (LLM decision summary)
-  const paragraphs = text.replace(/<think>[\s\S]*?<\/think>/gi, "").split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
-  _pendingDeployReason = paragraphs[paragraphs.length - 1] || null;
+  // Priority 2: content inside <think> block — skip (too verbose for notification)
+  // Priority 3: first sentence of last non-empty paragraph (capped at 100 chars)
+  const clean = text.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<\/?[^>]+>/g, "");
+  const paragraphs = clean.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  const lastPara = paragraphs[paragraphs.length - 1] || "";
+  // Take only the first sentence (up to first period/exclamation/question)
+  const firstSentence = lastPara.split(/(?<=[.!?])\s/)[0] || lastPara;
+  _pendingDeployReason = firstSentence.slice(0, 100).trim() || null;
 }
 
 const _pendingCloseReasons = new Map();
