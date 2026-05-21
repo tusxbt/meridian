@@ -393,8 +393,12 @@ After executing, write a brief one-line result per position.
         // cycle report suppressed — only deploy/close/OOR notifications are sent
       }
       for (const p of positions) {
-        if (!p.in_range && p.minutes_out_of_range >= config.management.outOfRangeWaitMinutes) {
-          notifyOutOfRange({ pair: p.pair, minutesOOR: p.minutes_out_of_range }).catch(() => { });
+        const isOORDown = p.active_bin != null && p.lower_bin != null && p.active_bin < p.lower_bin;
+        const waitThreshold = isOORDown
+          ? (config.management.outOfRangeDownWaitMinutes ?? 30)
+          : config.management.outOfRangeWaitMinutes;
+        if (!p.in_range && p.minutes_out_of_range >= waitThreshold) {
+          notifyOutOfRange({ pair: p.pair, minutesOOR: p.minutes_out_of_range, waitMins: waitThreshold }).catch(() => { });
         }
       }
     }
@@ -1171,7 +1175,7 @@ function formatConfigSnapshot() {
     `Deploy: ${config.management.deployAmountSol} SOL | gasReserve: ${config.management.gasReserve} | maxPositions: ${config.risk.maxPositions}`,
     `Stop loss: ${config.management.stopLossPct}% | take profit: ${config.management.takeProfitPct}%`,
     `Trailing: ${config.management.trailingTakeProfit ? "on" : "off"} | trigger ${config.management.trailingTriggerPct}% | drop ${config.management.trailingDropPct}%`,
-    `OOR: ${config.management.outOfRangeWaitMinutes}m | cooldown ${config.management.oorCooldownTriggerCount}x / ${config.management.oorCooldownHours}h`,
+    `OOR upside: ${config.management.outOfRangeWaitMinutes}m | downside: ${config.management.outOfRangeDownWaitMinutes ?? 30}m | cooldown ${config.management.oorCooldownTriggerCount}x / ${config.management.oorCooldownHours}h`,
     `Repeat deploy cooldown: ${config.management.repeatDeployCooldownEnabled ? "on" : "off"} | ${config.management.repeatDeployCooldownTriggerCount}x / ${config.management.repeatDeployCooldownHours}h | min fee earned ${config.management.repeatDeployCooldownMinFeeEarnedPct}% | ${config.management.repeatDeployCooldownScope}`,
     `Yield floor: ${config.management.minFeePerTvl24h}% | min age ${config.management.minAgeBeforeYieldCheck}m`,
     `Screening: ${config.screening.category} / ${config.screening.timeframe} | TVL ${config.screening.minTvl}-${config.screening.maxTvl}`,
@@ -1757,9 +1761,11 @@ async function telegramHandler(msg) {
         const pnlPct = p.pnl_pct ?? 0;
         const pnlUsd = p.pnl_usd ?? 0;
         const minsOOR = p.minutes_out_of_range ?? 0;
-        const waitMins = config.management.outOfRangeWaitMinutes;
-        const isOORUp = p.active_bin != null && p.upper_bin != null && p.active_bin > p.upper_bin;
+        const isOORUp   = p.active_bin != null && p.upper_bin != null && p.active_bin > p.upper_bin;
         const isOORDown = p.active_bin != null && p.lower_bin != null && p.active_bin < p.lower_bin;
+        const waitMins  = isOORDown
+          ? (config.management.outOfRangeDownWaitMinutes ?? 30)
+          : config.management.outOfRangeWaitMinutes;
         const isOOR = !p.in_range;
 
         // Status emoji
