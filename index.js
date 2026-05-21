@@ -975,18 +975,20 @@ function getDeterministicCloseRule(position, managementConfig) {
   ) {
     return { action: "CLOSE", rule: 3, reason: "pumped far above range" };
   }
+  // Rule 4: OOR wait — fires for both upside (active > upper) AND downside (active < lower)
+  const isOORUp   = position.active_bin != null && position.upper_bin != null && position.active_bin > position.upper_bin;
+  const isOORDown = position.active_bin != null && position.lower_bin != null && position.active_bin < position.lower_bin;
   if (
-    position.active_bin != null &&
-    position.upper_bin != null &&
-    position.active_bin > position.upper_bin &&
+    (isOORUp || isOORDown) &&
     (position.minutes_out_of_range ?? 0) >= managementConfig.outOfRangeWaitMinutes
   ) {
-    return { action: "CLOSE", rule: 4, reason: "OOR" };
+    const dir = isOORUp ? "upside" : "downside";
+    return { action: "CLOSE", rule: 4, reason: `OOR ${dir}` };
   }
   if (
     position.fee_per_tvl_24h != null &&
     position.fee_per_tvl_24h < managementConfig.minFeePerTvl24h &&
-    (position.age_minutes ?? 0) >= (managementConfig.minAgeBeforeYieldCheck ?? 60)
+    (position.age_minutes ?? 0) >= (managementConfig.minAgeBeforeYieldCheck ?? 25)
   ) {
     return { action: "CLOSE", rule: 5, reason: "low yield" };
   }
