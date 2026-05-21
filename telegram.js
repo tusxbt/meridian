@@ -478,11 +478,18 @@ export async function notifySwap({ inputSymbol, outputSymbol, amountIn, amountOu
   );
 }
 
-export async function notifyOutOfRange({ pair, minutesOOR }) {
+export async function notifyOutOfRange({ pair, minutesOOR, waitMins }) {
   if (hasActiveLiveMessage()) return;
+  const progress = waitMins != null
+    ? ` (${minutesOOR}m/${waitMins}m)`
+    : ` ${minutesOOR}m`;
+  const bar = waitMins != null ? (() => {
+    const filled = Math.min(Math.round((minutesOOR / waitMins) * 10), 10);
+    return " [" + "█".repeat(filled) + "░".repeat(10 - filled) + "]";
+  })() : "";
   await sendHTML(
-    `⚠️ <b>Out of Range</b> ${pair}\n` +
-    `Been OOR for ${minutesOOR} minutes`
+    `🔴 <b>OOR — ${esc(pair)}</b>${progress}\n` +
+    `⏳${bar} menunggu close…`
   );
 }
 

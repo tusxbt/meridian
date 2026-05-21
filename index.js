@@ -102,6 +102,7 @@ setInterval(() => {
 }, 10_000);
 let _pollTriggeredAt = 0; // epoch ms — cooldown for poller-triggered management
 const _peakConfirmTimers = new Map();
+const _oorProgressNotifyAt = new Map(); // positionAddress → epoch ms of last OOR progress notification
 const _trailingDropConfirmTimers = new Map();
 const TRAILING_PEAK_CONFIRM_DELAY_MS = 15_000;
 const TRAILING_PEAK_CONFIRM_TOLERANCE = 0.85;
@@ -882,6 +883,21 @@ Summarize the current portfolio health, total fees earned, and performance of al
             log("state", `[PnL poll] Deterministic close rule: ${p.pair} — Rule ${closeRule.rule}: ${closeRule.reason} — cooldown (${Math.round((cooldownMs - sinceLastTrigger) / 1000)}s left)`);
           }
           break;
+        }
+
+        // OOR progress notification — send every 1 minute while position is OOR
+        if (!p.in_range && (p.minutes_out_of_range ?? 0) > 0 && telegramEnabled()) {
+          const waitMins = p.active_bin != null && p.lower_bin != null && p.active_bin < p.lower_bin
+            ? (config.management.outOfRangeDownWaitMinutes ?? 30)
+            : config.management.outOfRangeWaitMinutes;
+          const lastNotify = _oorProgressNotifyAt.get(p.position) ?? 0;
+          if (Date.now() - lastNotify >= 60_000) {
+            _oorProgressNotifyAt.set(p.position, Date.now());
+            notifyOutOfRange({ pair: p.pair, minutesOOR: p.minutes_out_of_range, waitMins }).catch(() => {});
+          }
+        } else if (p.in_range) {
+          // Clear tracker when back in range
+          _oorProgressNotifyAt.delete(p.position);
         }
       }
     } finally {
