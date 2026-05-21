@@ -31,13 +31,16 @@ async function api(path, opts = {}) {
 // ─── Auth ───────────────────────────────────────────
 function showLogin() {
   document.getElementById("login-screen").classList.remove("hidden");
-  document.getElementById("sidebar").classList.add("hidden");
+  document.getElementById("sidebar").classList.remove("sidebar-visible");
+  document.getElementById("bottom-nav").classList.remove("bottomnav-visible");
+  document.getElementById("bottom-nav").style.display = "";
   document.getElementById("main-content").classList.add("hidden");
 }
 
 function showApp() {
   document.getElementById("login-screen").classList.add("hidden");
-  document.getElementById("sidebar").classList.remove("hidden");
+  document.getElementById("sidebar").classList.add("sidebar-visible");
+  document.getElementById("bottom-nav").classList.add("bottomnav-visible");
   document.getElementById("main-content").classList.remove("hidden");
 }
 
@@ -47,6 +50,7 @@ function logout() {
   if (state.ws) state.ws.close();
   showLogin();
 }
+window._logout = logout;
 
 document.getElementById("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -84,6 +88,8 @@ function connectWs() {
   state.ws.onopen = () => {
     document.getElementById("nav-status").textContent = "Connected";
     document.getElementById("nav-status").className = "text-xs text-[#a6e3a1]";
+    const mobWs = document.getElementById("mob-status-ws");
+    if (mobWs) { mobWs.textContent = "Live"; mobWs.className = "text-[#a6e3a1]"; }
     state.ws.send(JSON.stringify({ type: "subscribe", payload: { channels: ["positions", "system"] } }));
   };
 
@@ -97,6 +103,8 @@ function connectWs() {
   state.ws.onclose = () => {
     document.getElementById("nav-status").textContent = "Disconnected";
     document.getElementById("nav-status").className = "text-xs text-[#f38ba8]";
+    const mobWs = document.getElementById("mob-status-ws");
+    if (mobWs) { mobWs.textContent = "Off"; mobWs.className = "text-[#f38ba8]"; }
     clearTimeout(state.wsReconnectTimer);
     state.wsReconnectTimer = setTimeout(connectWs, 5000);
   };
@@ -148,6 +156,13 @@ function route() {
     el.classList.toggle("active", href === `#${hash}`);
   });
 
+  // Update mobile bottom nav active state
+  const mobActiveMap = { "/": 0, "/positions": 1, "/terminal": 2, "/performance": 3 };
+  const mobIdx = mobActiveMap[hash];
+  document.querySelectorAll(".mob-nav-link").forEach((el, i) => {
+    el.classList.toggle("active", i === mobIdx);
+  });
+
   const handler = routes[hash];
   if (handler) {
     document.getElementById("app").innerHTML = "";
@@ -171,13 +186,16 @@ async function updateStatusBar() {
   try {
     const sys = await api("/system/status");
     state.systemStatus = sys;
-    document.getElementById("status-positions").textContent = `${sys.open_positions}/${sys.max_positions}`;
+    const posText = `${sys.open_positions}/${sys.max_positions}`;
+    document.getElementById("status-positions").textContent = posText;
     document.getElementById("status-mgmt").textContent = sys.next_management_seconds != null
       ? formatCountdown(sys.next_management_seconds) + (sys.management_busy ? " (busy)" : "")
       : "N/A";
     document.getElementById("status-screen").textContent = sys.next_screening_seconds != null
       ? formatCountdown(sys.next_screening_seconds) + (sys.screening_busy ? " (busy)" : "")
       : "N/A";
+    const mobPos = document.getElementById("mob-status-positions");
+    if (mobPos) mobPos.textContent = posText;
   } catch {}
   try {
     if (!state.portfolioCache || Date.now() - state.portfolioCache._ts > 30000) {
@@ -185,7 +203,10 @@ async function updateStatusBar() {
       p._ts = Date.now();
       state.portfolioCache = p;
     }
-    document.getElementById("status-sol").textContent = `${(state.portfolioCache.sol || 0).toFixed(3)} SOL`;
+    const solText = `${(state.portfolioCache.sol || 0).toFixed(3)} SOL`;
+    document.getElementById("status-sol").textContent = solText;
+    const mobSol = document.getElementById("mob-status-sol");
+    if (mobSol) mobSol.textContent = solText;
   } catch {}
 }
 
