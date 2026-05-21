@@ -992,6 +992,13 @@ function getDeterministicCloseRule(position, managementConfig) {
   ) {
     return { action: "CLOSE", rule: 5, reason: "low yield" };
   }
+  if (
+    managementConfig.maxHoldMinutes != null &&
+    position.age_minutes != null &&
+    position.age_minutes >= managementConfig.maxHoldMinutes
+  ) {
+    return { action: "CLOSE", rule: 6, reason: "max hold time" };
+  }
   return null;
 }
 
