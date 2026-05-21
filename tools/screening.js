@@ -29,8 +29,8 @@ const PVP_MIN_GLOBAL_FEES_SOL = 15;
 
 // ── Hardcoded floors — cannot be overridden by user config ──────────────────
 const HARD_MIN_TVL              = 7_500;
-const HARD_MIN_VOLUME_PER_15MIN = 1_000;
-const MAX_FEE_VOLUME_RATIO      = 0.10;
+const HARD_MIN_VOLUME_PER_15MIN = 1_200;
+const MAX_FEE_VOLUME_RATIO      = 0.15;
 
 function getHardVolumeFloor(timeframe) {
   const minutes = TIMEFRAME_MINUTES[timeframe] || 5;
@@ -67,7 +67,7 @@ function numeric(value) {
 
 function isUsableVolatility(value) {
   const n = numeric(value);
-  return n != null && n > 0;
+  return n == null || n > 0;
 }
 
 function includesCaseInsensitive(values, value) {

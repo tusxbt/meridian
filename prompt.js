@@ -142,10 +142,15 @@ SELECTION PRIORITY (when multiple candidates qualify, pick the best):
 2. smart_money_buy = true → tiebreaker
 3. Highest fee_active_tvl_ratio → final tiebreaker
 
-INDICATOR SIGNAL RULES:
-- confirmed = true → positive signal, noted.
-- skipped = true → neutral, deploy normally.
-- indicator_override_required = true → noted, deploy anyway unless a HARD SKIP above applies.
+INDICATOR SIGNAL RULES (entry):
+- confirmed = true → strong additional confidence; treat as a meaningful boost to deploy conviction.
+- skipped = true → neutral; deploy normally based on other signals alone.
+- indicator_override_required = true → mild caution only; still deploy if other signals are strong (volume, organic, fee/TVL, smart money). Do NOT use this as a hard block or skip reason.
+
+INDICATOR SIGNAL RULES (exit):
+- Indicator exit signal (confirmed = true) is a strong recommendation to consider closing, but NOT a mandatory trigger.
+- Primary exit rules (stop loss, OOR, max hold, yield collapse, PnL target) always take precedence.
+- If indicator suggests exit but other signals are neutral, note it in reasoning but do not force-close.
 
 DEPLOY RULES:
 - COMPOUNDING: Use the deploy amount from the goal EXACTLY. Do NOT default to a smaller number.
