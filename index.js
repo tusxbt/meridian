@@ -962,13 +962,23 @@ function getDeterministicCloseRule(position, managementConfig) {
   ) {
     return { action: "CLOSE", rule: 3, reason: "pumped far above range" };
   }
-  if (
-    position.active_bin != null &&
-    position.upper_bin != null &&
-    position.active_bin > position.upper_bin &&
-    (position.minutes_out_of_range ?? 0) >= managementConfig.outOfRangeWaitMinutes
-  ) {
-    return { action: "CLOSE", rule: 4, reason: "OOR" };
+  // Rule 4: OOR wait — upside and downside use separate wait thresholds
+  const isOORUp   = position.active_bin != null && position.upper_bin != null && position.active_bin > position.upper_bin;
+  const isOORDown = position.active_bin != null && position.lower_bin != null && position.active_bin < position.lower_bin;
+  const minsOOR   = position.minutes_out_of_range ?? 0;
+  if (isOORUp && minsOOR >= managementConfig.outOfRangeWaitMinutes) {
+    return { action: "CLOSE", rule: 4, reason: "OOR upside" };
+  }
+  if (isOORDown && minsOOR >= (managementConfig.outOfRangeDownWaitMinutes ?? 30)) {
+    return { action: "CLOSE", rule: 4, reason: "OOR downside" };
+  }
+  // Fallback: bin data unavailable tapi position confirmed OOR dari portfolio API
+  if (!isOORUp && !isOORDown && !position.in_range && minsOOR > 0) {
+    const downWait = managementConfig.outOfRangeDownWaitMinutes ?? managementConfig.outOfRangeWaitMinutes;
+    const fallbackThreshold = Math.min(managementConfig.outOfRangeWaitMinutes, downWait);
+    if (minsOOR >= fallbackThreshold) {
+      return { action: "CLOSE", rule: 4, reason: `OOR ${minsOOR}m (bin data unavailable, direction unknown)` };
+    }
   }
   if (
     position.fee_per_tvl_24h != null &&
