@@ -361,7 +361,6 @@ const toolMap = {
       minVolumeToRebalance: ["management", "minVolumeToRebalance"],
       stopLossPct: ["management", "stopLossPct"],
       takeProfitPct: ["management", "takeProfitPct"],
-      takeProfitFeePct: ["management", "takeProfitPct"],
       trailingTakeProfit: ["management", "trailingTakeProfit"],
       trailingTriggerPct: ["management", "trailingTriggerPct"],
       trailingDropPct: ["management", "trailingDropPct"],
@@ -689,19 +688,24 @@ export async function executeTool(name, args) {
           try {
             const balances = await getWalletBalances({});
             const token = balances.tokens?.find(t => t.mint === result.base_mint);
-            if (token && token.usd >= 0.10) {
-              log("executor", `Auto-swapping ${token.symbol || result.base_mint.slice(0, 8)} ($${token.usd.toFixed(2)}) back to SOL`);
+            // Treat null usd as "price unavailable" — swap if balance is positive
+            const usd = token?.usd == null ? null : Number(token.usd);
+            const hasBalance = token && Number(token.balance) > 0;
+            const isWorthSwapping = hasBalance && (usd == null || usd >= 0.10);
+            if (isWorthSwapping) {
+              const usdLabel = usd != null ? `$${usd.toFixed(2)}` : "price unknown";
+              log("executor", `Auto-swapping ${token.symbol || result.base_mint.slice(0, 8)} (${usdLabel}) back to SOL`);
               const swapResult = await swapToken({ input_mint: result.base_mint, output_mint: "SOL", amount: token.balance });
               // Tell the model the swap already happened so it doesn't call swap_token again
               result.auto_swapped = true;
               result.auto_swap_note = `Base token already auto-swapped back to SOL (${token.symbol || result.base_mint.slice(0, 8)} → SOL). Do NOT call swap_token again.`;
               if (swapResult?.amount_out) result.sol_received = swapResult.amount_out;
-            } else if (!token) {
+            } else if (!token || !hasBalance) {
               log("executor", `Auto-swap skipped: base token ${result.base_mint.slice(0, 8)} not found in wallet (relay may have already converted it)`);
               result.auto_swap_note = `Base token not found in wallet after close — relay may have already converted it to SOL. Verify wallet balance before calling swap_token.`;
             } else {
-              log("executor", `Auto-swap skipped: base token ${token.symbol || result.base_mint.slice(0, 8)} value $${token.usd.toFixed(2)} is below $0.10 dust threshold`);
-              result.auto_swap_note = `Base token value $${token.usd.toFixed(2)} is below $0.10 dust threshold — swap skipped.`;
+              log("executor", `Auto-swap skipped: base token ${token.symbol || result.base_mint.slice(0, 8)} value $${usd.toFixed(2)} is below $0.10 dust threshold`);
+              result.auto_swap_note = `Base token value $${usd.toFixed(2)} is below $0.10 dust threshold — swap skipped.`;
             }
           } catch (e) {
             log("executor_warn", `Auto-swap after close failed: ${e.message}`);
@@ -713,8 +717,11 @@ export async function executeTool(name, args) {
         try {
           const balances = await getWalletBalances({});
           const token = balances.tokens?.find(t => t.mint === result.base_mint);
-          if (token && token.usd >= 0.10) {
-            log("executor", `Auto-swapping claimed ${token.symbol || result.base_mint.slice(0, 8)} ($${token.usd.toFixed(2)}) back to SOL`);
+          const usd = token?.usd == null ? null : Number(token.usd);
+          const hasBalance = token && Number(token.balance) > 0;
+          if (hasBalance && (usd == null || usd >= 0.10)) {
+            const usdLabel = usd != null ? `$${usd.toFixed(2)}` : "price unknown";
+            log("executor", `Auto-swapping claimed ${token.symbol || result.base_mint.slice(0, 8)} (${usdLabel}) back to SOL`);
             await swapToken({ input_mint: result.base_mint, output_mint: "SOL", amount: token.balance });
           }
         } catch (e) {
@@ -771,15 +778,9 @@ async function runSafetyChecks(name, args) {
         };
       }
       const minBinsBelow = Math.max(MIN_SAFE_BINS_BELOW, Number(config.strategy.minBinsBelow ?? MIN_SAFE_BINS_BELOW));
-      // bins_below=0 is always a miscomputation — fall back to config minimum silently
+      // bins_below=0 / missing is auto-corrected in dlmm.js itself — accept here for safety-pass purposes
       const rawBinsBelow = Number(args.bins_below ?? config.strategy.defaultBinsBelow ?? config.strategy.minBinsBelow);
-      const requestedBinsBelow = (Number.isFinite(rawBinsBelow) && rawBinsBelow > 0)
-        ? rawBinsBelow
-        : minBinsBelow;
-      if (rawBinsBelow !== requestedBinsBelow) {
-        log("warn", `bins_below=${args.bins_below ?? "missing"} auto-corrected to ${requestedBinsBelow} (minBinsBelow)`);
-        args = { ...args, bins_below: requestedBinsBelow };
-      }
+      const requestedBinsBelow = (Number.isFinite(rawBinsBelow) && rawBinsBelow > 0) ? rawBinsBelow : minBinsBelow;
       const requestedBinsAbove = Number(args.bins_above ?? 0);
       const isSingleSidedSol = deployAmountY > 0 && deployAmountX <= 0;
       const requestedTotalBins = requestedBinsBelow + requestedBinsAbove;
@@ -860,9 +861,9 @@ async function runSafetyChecks(name, args) {
         }
       }
 
-      // Check amount limits
-      const amountY = args.amount_y ?? args.amount_sol ?? 0;
-      if (amountY <= 0) {
+      // Check amount limits — coerce to Number so string inputs ("0.5") don't bypass comparisons
+      const amountY = Number(args.amount_y ?? args.amount_sol ?? 0);
+      if (!Number.isFinite(amountY) || amountY <= 0) {
         return {
           pass: false,
           reason: `Must provide a positive SOL amount (amount_y).`,

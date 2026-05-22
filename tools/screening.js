@@ -568,6 +568,20 @@ export async function getTopCandidates({ limit = 10 } = {}) {
   const minFeeActiveTvlRatio = Number(config.screening.minFeeActiveTvlRatio ?? 0);
   const maxFeeActiveTvlRatio = config.screening.maxFeeActiveTvlRatio != null
     ? Number(config.screening.maxFeeActiveTvlRatio) : null;
+  const s = config.screening;
+  // Field accessors that work for both Meteora and GMGN normalized shapes
+  const getMcap     = (p) => Number(p.mcap ?? p.token_x?.market_cap ?? NaN);
+  const getHolders  = (p) => Number(p.holders ?? p.base_token_holders ?? NaN);
+  const getBinStep  = (p) => Number(p.bin_step ?? p.dlmm_params?.bin_step ?? NaN);
+  const getAgeHours = (p) => {
+    if (p.token_age_hours != null) return Number(p.token_age_hours);
+    if (p.token_x?.created_at) return (Date.now() - Number(p.token_x.created_at)) / 3_600_000;
+    return null;
+  };
+  const getOrganic  = (p) => p.token_x?.organic_score; // null for GMGN — skip when null
+  const getLaunchpad = (p) => p.launchpad ?? getPoolLaunchpad(p);
+  const getVolume   = (p) => Number(p.volume ?? NaN);
+  const isGmgn = (p) => p.gmgn === true;
 
   const eligible = pools
     .filter((p) => {
@@ -576,14 +590,62 @@ export async function getTopCandidates({ limit = 10 } = {}) {
         pushFilteredReason(filteredOut, p, `TVL $${tvl} below minTvl $${minTvl}`);
         return false;
       }
-      if (Number.isFinite(maxTvl) && maxTvl > 0 && tvl > maxTvl) {
+      if (maxTvl != null && Number.isFinite(maxTvl) && tvl > maxTvl) {
         pushFilteredReason(filteredOut, p, `TVL $${tvl} above maxTvl $${maxTvl}`);
         return false;
       }
       const feeRatio = Number(p.fee_active_tvl_ratio ?? 0);
-      if (maxFeeActiveTvlRatio != null && feeRatio > maxFeeActiveTvlRatio) {
-        pushFilteredReason(filteredOut, p, `fee/TVL ${feeRatio} above maxFeeActiveTvlRatio ${maxFeeActiveTvlRatio}`);
+      if (minFeeActiveTvlRatio > 0 && feeRatio < minFeeActiveTvlRatio) {
+        pushFilteredReason(filteredOut, p, `fee/TVL ${feeRatio} below minFeeActiveTvlRatio ${minFeeActiveTvlRatio}`);
         return false;
+      }
+      if (maxFeeActiveTvlRatio != null && feeRatio > maxFeeActiveTvlRatio) {
+        pushFilteredReason(filteredOut, p, `fee/TVL ${feeRatio} above maxFeeActiveTvlRatio ${maxFeeActiveTvlRatio} (suspicious — possible wash trading)`);
+        return false;
+      }
+      // Quantitative gates — same as Meteora getRawPoolScreeningRejectReason
+      const mcap = getMcap(p);
+      if (Number.isFinite(mcap)) {
+        if (mcap < s.minMcap) { pushFilteredReason(filteredOut, p, `mcap ${mcap} below minMcap ${s.minMcap}`); return false; }
+        if (mcap > s.maxMcap) { pushFilteredReason(filteredOut, p, `mcap ${mcap} above maxMcap ${s.maxMcap}`); return false; }
+      }
+      const holders = getHolders(p);
+      if (Number.isFinite(holders) && holders < s.minHolders) {
+        pushFilteredReason(filteredOut, p, `holders ${holders} below minHolders ${s.minHolders}`); return false;
+      }
+      const binStep = getBinStep(p);
+      if (Number.isFinite(binStep)) {
+        if (binStep < s.minBinStep) { pushFilteredReason(filteredOut, p, `bin_step ${binStep} below minBinStep ${s.minBinStep}`); return false; }
+        if (binStep > s.maxBinStep) { pushFilteredReason(filteredOut, p, `bin_step ${binStep} above maxBinStep ${s.maxBinStep}`); return false; }
+      }
+      const volume = getVolume(p);
+      if (Number.isFinite(volume) && volume > 0) {
+        const volumeFloor = Math.max(s.minVolume, getHardVolumeFloor(s.timeframe));
+        if (volume < volumeFloor) {
+          pushFilteredReason(filteredOut, p, `volume ${volume} below floor ${volumeFloor}`); return false;
+        }
+      }
+      // Organic only for Meteora — GMGN doesn't supply it
+      if (!isGmgn(p)) {
+        const baseOrganic = getOrganic(p);
+        if (baseOrganic == null || baseOrganic < s.minOrganic) {
+          pushFilteredReason(filteredOut, p, `base organic ${baseOrganic ?? "unknown"} below minOrganic ${s.minOrganic}`); return false;
+        }
+        const quoteOrganic = p.token_y?.organic_score;
+        if (quoteOrganic == null || quoteOrganic < s.minQuoteOrganic) {
+          pushFilteredReason(filteredOut, p, `quote organic ${quoteOrganic ?? "unknown"} below minQuoteOrganic ${s.minQuoteOrganic}`); return false;
+        }
+      }
+      const ageHours = getAgeHours(p);
+      if (s.minTokenAgeHours != null && (ageHours == null || ageHours < s.minTokenAgeHours)) {
+        pushFilteredReason(filteredOut, p, `token age ${ageHours ?? "unknown"}h below minTokenAgeHours ${s.minTokenAgeHours}`); return false;
+      }
+      if (s.maxTokenAgeHours != null && ageHours != null && ageHours > s.maxTokenAgeHours) {
+        pushFilteredReason(filteredOut, p, `token age ${ageHours}h above maxTokenAgeHours ${s.maxTokenAgeHours}`); return false;
+      }
+      const launchpad = getLaunchpad(p);
+      if (includesCaseInsensitive(s.blockedLaunchpads, launchpad)) {
+        pushFilteredReason(filteredOut, p, `blocked launchpad (${launchpad})`); return false;
       }
       // volatility not required — skip rejection for missing/zero volatility
       if (occupiedPools.has(p.pool)) {

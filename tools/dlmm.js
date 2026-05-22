@@ -582,7 +582,14 @@ export async function deployPosition({
 }) {
   pool_address = normalizeMint(pool_address);
   const activeStrategy = strategy || config.strategy.strategy;
-  let activeBinsBelow = bins_below ?? config.strategy.defaultBinsBelow ?? config.strategy.minBinsBelow;
+  // bins_below=0 is always a miscomputation — treat as missing and fall back to config default
+  const rawBinsBelow = bins_below ?? config.strategy.defaultBinsBelow ?? config.strategy.minBinsBelow;
+  let activeBinsBelow = (Number.isFinite(rawBinsBelow) && rawBinsBelow > 0)
+    ? rawBinsBelow
+    : (config.strategy.defaultBinsBelow || config.strategy.minBinsBelow || 35);
+  if (bins_below === 0 || (bins_below != null && Number(bins_below) <= 0)) {
+    log("deploy", `bins_below=${bins_below} auto-corrected to ${activeBinsBelow} (fallback minBinsBelow)`);
+  }
   let activeBinsAbove = bins_above ?? 0;
   const parsedVolatility = volatility == null ? null : Number(volatility);
   const normalizedVolatility = parsedVolatility != null && Number.isFinite(parsedVolatility) ? parsedVolatility : null;
@@ -1503,7 +1510,8 @@ export async function claimFees({ position_address }) {
   }
 
   const tracked = getTrackedPosition(position_address);
-  if (tracked?.closed) {
+  // Only block if we KNOW position is closed (tracked && closed). Untracked relay deploys still allowed.
+  if (tracked && tracked.closed) {
     return { success: false, error: "Position already closed — fees were claimed during close" };
   }
 
@@ -1515,6 +1523,13 @@ export async function claimFees({ position_address }) {
     poolCache.delete(poolAddress.toString());
     const pool = await getPool(poolAddress);
 
+    // Snapshot fees-earned BEFORE claim, so we can credit the right delta to state.json
+    let feesBeforeUsd = 0;
+    try {
+      const pnlBefore = await getPositionPnl({ position_address });
+      feesBeforeUsd = Number(pnlBefore?.unclaimed_fees_usd ?? pnlBefore?.fees_earned_usd ?? 0) || 0;
+    } catch { /* best-effort snapshot only */ }
+
     const positionData = await pool.getPosition(new PublicKey(position_address));
     const txs = await pool.claimSwapFee({
       owner: wallet.publicKey,
@@ -1522,7 +1537,8 @@ export async function claimFees({ position_address }) {
     });
 
     if (!txs || txs.length === 0) {
-      return { success: false, error: "No fees to claim — transaction is empty" };
+      // Not an error — just nothing to claim right now
+      return { success: true, no_fees: true, position: position_address, message: "No fees to claim at this time" };
     }
 
     const txHashes = [];
@@ -1530,11 +1546,11 @@ export async function claimFees({ position_address }) {
       const txHash = await sendAndConfirmTransaction(getConnection(), tx, [wallet]);
       txHashes.push(txHash);
     }
-    log("claim", `SUCCESS txs: ${txHashes.join(", ")}`);
+    log("claim", `SUCCESS txs: ${txHashes.join(", ")} fees ~$${feesBeforeUsd.toFixed(2)}`);
     _positionsCacheAt = 0; // invalidate cache after claim
-    recordClaim(position_address);
+    recordClaim(position_address, feesBeforeUsd);
 
-    return { success: true, position: position_address, txs: txHashes, base_mint: pool.lbPair.tokenXMint.toString() };
+    return { success: true, position: position_address, txs: txHashes, fees_claimed_usd: feesBeforeUsd, base_mint: pool.lbPair.tokenXMint.toString() };
   } catch (error) {
     log("claim_error", error.message);
     return { success: false, error: error.message };
