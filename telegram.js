@@ -229,7 +229,7 @@ function summarizeToolResult(name, result) {
     case "close_position":
       return result.success ? "closed" : (result.reason || "failed");
     case "claim_fees":
-      return result.claimed_amount != null ? `claimed ${result.claimed_amount}` : "done";
+      return result.fees_claimed_usd != null ? `claimed $${Number(result.fees_claimed_usd).toFixed(2)}` : (result.no_fees ? "no fees" : "done");
     case "update_config":
       return Object.keys(result.applied || {}).join(", ") || "updated";
     case "get_top_candidates":

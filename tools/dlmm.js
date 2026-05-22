@@ -25,7 +25,7 @@ import {
 } from "../state.js";
 import { recordPerformance } from "../lessons.js";
 import { isBaseMintOnCooldown, isPoolOnCooldown } from "../pool-memory.js";
-import { normalizeMint } from "./wallet.js";
+import { normalizeMint, getWalletBalances } from "./wallet.js";
 import { appendDecision } from "../decision-log.js";
 
 // ─── Lazy SDK loader ───────────────────────────────────────────
@@ -1221,7 +1221,7 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
   if (!force && _positionsCache && Date.now() - _positionsCacheAt < POSITIONS_CACHE_TTL) {
     return _positionsCache;
   }
-  if (_positionsInflight) return _positionsInflight;
+  if (_positionsInflight && !force) return _positionsInflight;
 
   let walletAddress;
   try {
@@ -1239,7 +1239,10 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
           agentId: config.hiveMind.agentId || "agent-local",
         });
         const normalizedPositions = Array.isArray(result.positions) ? result.positions : [];
-        syncOpenPositions(normalizedPositions.map((p) => p.position));
+        const autoClosed = syncOpenPositions(normalizedPositions.map((p) => p.position));
+        for (const { position_address, snapshot } of autoClosed) {
+          try { recordPerformance({ position_address, pnl_usd: null, source: "sync_auto_close", notes: snapshot.notes?.join("; ") }); } catch {}
+        }
         _positionsCache = {
           wallet: walletAddress,
           total_positions: Number(result.total_positions || 0),
@@ -1416,7 +1419,10 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
     }
 
     const result = { wallet: walletAddress, total_positions: positions.length, positions };
-    syncOpenPositions(positions.map(p => p.position));
+    const autoClosed2 = syncOpenPositions(positions.map(p => p.position));
+    for (const { position_address, snapshot } of autoClosed2) {
+      try { recordPerformance({ position_address, pnl_usd: null, source: "sync_auto_close", notes: snapshot.notes?.join("; ") }); } catch {}
+    }
     _positionsCache = result;
     _positionsCacheAt = Date.now();
     return result;

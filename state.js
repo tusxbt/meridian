@@ -461,7 +461,7 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
   }
 
   // ── Trailing TP ────────────────────────────────────────────────
-  if (!pnl_pct_suspicious && pos.trailing_active) {
+  if (!pnl_pct_suspicious && pos.trailing_active && currentPnlPct != null) {
     const dropFromPeak = pos.peak_pnl_pct - currentPnlPct;
     if (dropFromPeak >= mgmtConfig.trailingDropPct) {
       return {
@@ -476,12 +476,16 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
   }
 
   // ── Out of range too long ──────────────────────────────────────
+  // Use the shorter of upside/downside wait so the management cycle is triggered
+  // promptly. The actual direction-aware close decision is made in getDeterministicCloseRule().
   if (pos.out_of_range_since) {
     const minutesOOR = Math.floor((Date.now() - new Date(pos.out_of_range_since).getTime()) / 60000);
-    if (minutesOOR >= mgmtConfig.outOfRangeWaitMinutes) {
+    const downWait = mgmtConfig.outOfRangeDownWaitMinutes ?? mgmtConfig.outOfRangeWaitMinutes;
+    const oorTriggerMins = Math.min(mgmtConfig.outOfRangeWaitMinutes, downWait);
+    if (minutesOOR >= oorTriggerMins) {
       return {
         action: "OUT_OF_RANGE",
-        reason: `Out of range for ${minutesOOR}m (limit: ${mgmtConfig.outOfRangeWaitMinutes}m)`,
+        reason: `Out of range for ${minutesOOR}m (trigger: ${oorTriggerMins}m)`,
       };
     }
   }

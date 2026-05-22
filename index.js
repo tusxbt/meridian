@@ -53,8 +53,8 @@ if (isMain) {
   startHiveMindBackgroundSync();
 }
 
-const TP_PCT = config.management.takeProfitPct;
-const DEPLOY = config.management.deployAmountSol;
+// Use live config references (not frozen constants) so REPL reflects update_config changes
+const getDeployAmt = () => config.management.deployAmountSol;
 
 // ═══════════════════════════════════════════
 //  CYCLE TIMERS
@@ -87,6 +87,7 @@ function buildPrompt() {
 //  CRON DEFINITIONS
 // ═══════════════════════════════════════════
 let _cronTasks = [];
+let _pnlPollInterval = null; // stored separately so stopCronJobs can always clear it
 let _managementBusy = false; // prevents overlapping management cycles
 let _screeningBusy = false;  // prevents overlapping screening cycles
 let _screeningLastTriggered = 0; // epoch ms — prevents management from spamming screening
@@ -211,7 +212,7 @@ async function maybeRunMissedBriefing() {
 
 function stopCronJobs() {
   for (const task of _cronTasks) task.stop();
-  if (_cronTasks._pnlPollInterval) clearInterval(_cronTasks._pnlPollInterval);
+  if (_pnlPollInterval) { clearInterval(_pnlPollInterval); _pnlPollInterval = null; }
   _cronTasks = [];
 }
 
@@ -812,7 +813,6 @@ export function startCronJobs() {
 
   const mgmtTask = cron.schedule(`*/${Math.max(1, config.schedule.managementIntervalMin)} * * * *`, async () => {
     if (_managementBusy) return;
-    timers.managementLastRun = Date.now();
     await runManagementCycle();
   });
 
@@ -916,8 +916,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
   }, 30_000);
 
   _cronTasks = [mgmtTask, screenTask, healthTask, briefingTask, briefingWatchdog];
-  // Store interval ref so stopCronJobs can clear it
-  _cronTasks._pnlPollInterval = pnlPollInterval;
+  _pnlPollInterval = pnlPollInterval;
   log("cron", `Cycles started — management every ${config.schedule.managementIntervalMin}m, screening every ${config.schedule.screeningIntervalMin}m`);
 }
 
@@ -2142,7 +2141,7 @@ if (isMain && isTTY) {
 
   console.log(`
 Commands:
-  1 / 2 / 3 ...  Deploy ${DEPLOY} SOL into that pool
+  1 / 2 / 3 ...  Deploy ${getDeployAmt()} SOL into that pool
   auto           Let the agent pick and deploy automatically
   /status        Refresh wallet + positions
   /candidates    Refresh top pool list
@@ -2166,9 +2165,10 @@ Commands:
     if (!isNaN(pick) && pick >= 1 && pick <= latest.length) {
       await runBusy(async () => {
         const pool = latest[pick - 1];
-        console.log(`\nDeploying ${DEPLOY} SOL into ${pool.name}...\n`);
+        const deployAmt = getDeployAmt();
+        console.log(`\nDeploying ${deployAmt} SOL into ${pool.name}...\n`);
         const { content: reply } = await agentLoop(
-          `Deploy ${DEPLOY} SOL into pool ${pool.pool} (${pool.name}). Call get_active_bin first then deploy_position. Report result.`,
+          `Deploy ${deployAmt} SOL into pool ${pool.pool} (${pool.name}). Call get_active_bin first then deploy_position. Report result.`,
           config.llm.maxSteps,
           [],
           "SCREENER"
@@ -2184,7 +2184,7 @@ Commands:
       await runBusy(async () => {
         console.log("\nAgent is screening for a deploy-worthy candidate...\n");
         const { content: reply } = await agentLoop(
-          `get_top_candidates, decide whether any candidate is worth deploying, and only call deploy_position with ${DEPLOY} SOL if conviction is strong. If only one candidate is returned and it lacks narrative or smart-wallet confirmation, skip and report NO DEPLOY. Execute now, don't ask.`,
+          `get_top_candidates, decide whether any candidate is worth deploying, and only call deploy_position with ${getDeployAmt()} SOL if conviction is strong. If only one candidate is returned and it lacks narrative or smart-wallet confirmation, skip and report NO DEPLOY. Execute now, don't ask.`,
           config.llm.maxSteps,
           [],
           "SCREENER"

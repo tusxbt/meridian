@@ -265,12 +265,18 @@ export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHis
 
       // If the model didn't call any tools, it's done
       if (!msg.tool_calls || msg.tool_calls.length === 0) {
-        // Hermes sometimes returns null content — pop the empty message and retry once
+        // Hermes sometimes returns null content — pop the empty message and retry, up to 3x
         if (!msg.content) {
           messages.pop(); // remove the empty assistant message
-          log("agent", "Empty response, retrying...");
+          emptyStreak += 1;
+          if (emptyStreak >= 3) {
+            log("agent", `3 consecutive empty responses — aborting to avoid infinite loop`);
+            return { content: "Model returned 3 consecutive empty responses. Check LLM connectivity or try a different model.", userMessage: goal };
+          }
+          log("agent", `Empty response (${emptyStreak}/3), retrying...`);
           continue;
         }
+        emptyStreak = 0;
         if (mustUseRealTool && !sawToolCall) {
           noToolRetryCount += 1;
           messages.pop();
