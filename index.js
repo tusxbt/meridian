@@ -1816,13 +1816,29 @@ async function telegramHandler(msg) {
           }
         }
 
+        // OOR progress bar (when OOR)
+        let oorBar = "";
+        if (isOOR && waitMins > 0) {
+          const filled = Math.min(Math.round((minsOOR / waitMins) * 10), 10);
+          const dir = isOORUp ? "🚀" : "📉";
+          oorBar = `${dir} [${`█`.repeat(filled)}${`░`.repeat(10 - filled)}] ${minsOOR}m/${waitMins}m`;
+        }
+
+        // Fee/TVL 24h
+        const feeTvl24h = p.fee_per_tvl_24h;
+        const feeTvlLine = feeTvl24h != null
+          ? `📈 Fee/TVL 24h: ${feeTvl24h.toFixed(2)}%`
+          : null;
+
         return [
           header,
           SEP,
           statusLine,
+          oorBar,
           SEP,
           pnlLine,
           `💎 Fees claimable: ${cur}${(p.unclaimed_fees_usd ?? 0).toFixed(2)}`,
+          feeTvlLine,
           `⏱ ${ageStr}  │  ${solStr}`,
           `💰 ${cur}${(p.total_value_usd ?? 0).toFixed(2)}`,
           binBar,
