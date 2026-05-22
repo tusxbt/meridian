@@ -1771,7 +1771,8 @@ async function telegramHandler(msg) {
         const waitMins  = isOORDown
           ? (config.management.outOfRangeDownWaitMinutes ?? 30)
           : config.management.outOfRangeWaitMinutes;
-        const isOOR = !p.in_range;
+        // Use bin numbers as source of truth — p.in_range from API can lag or be null
+        const isOOR = isOORUp || isOORDown || !p.in_range;
 
         // Status emoji
         const statusEmoji = isOOR ? "🔴" : pnlPct < -3 ? "🟡" : "🟢";
