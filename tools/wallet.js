@@ -56,6 +56,27 @@ function getJupiterReferralParams() {
  * Get current wallet balances: SOL, USDC, and all SPL tokens using Helius Wallet API.
  * Returns USD-denominated values provided by Helius.
  */
+/** Fetch SOL balance via RPC as last-resort fallback (no SPL tokens, no USD). */
+async function _rpcSolBalance(walletAddress) {
+  try {
+    const conn = getConnection();
+    const lamports = await conn.getBalance(new PublicKey(walletAddress));
+    const sol = lamports / LAMPORTS_PER_SOL;
+    log("wallet_warn", `Helius unavailable — RPC fallback SOL balance: ${sol.toFixed(4)}`);
+    return {
+      wallet: walletAddress,
+      sol: Math.round(sol * 1e6) / 1e6,
+      sol_price: 0, sol_usd: 0, usdc: 0,
+      tokens: [{ mint: config.tokens.SOL, symbol: "SOL", balance: sol, usd: null }],
+      total_usd: 0,
+      source: "rpc_fallback",
+    };
+  } catch (e) {
+    log("wallet_error", `RPC fallback also failed: ${e.message}`);
+    return { wallet: walletAddress, sol: 0, sol_price: 0, sol_usd: 0, usdc: 0, tokens: [], total_usd: 0, error: e.message };
+  }
+}
+
 export async function getWalletBalances() {
   let walletAddress;
   try {
@@ -66,64 +87,92 @@ export async function getWalletBalances() {
 
   const HELIUS_KEY = process.env.HELIUS_API_KEY;
   if (!HELIUS_KEY) {
-    log("wallet_error", "HELIUS_API_KEY not set in .env");
-    return { wallet: walletAddress, sol: 0, sol_price: 0, sol_usd: 0, usdc: 0, tokens: [], total_usd: 0, error: "Helius API key missing" };
+    log("wallet_warn", "HELIUS_API_KEY not set — falling back to RPC for SOL balance");
+    return await _rpcSolBalance(walletAddress);
   }
 
+  // Helius v0 Enhanced Balances: nativeBalance (lamports) + tokens [{mint,amount,decimals}]
+  const heliusUrl = `https://api.helius.xyz/v0/addresses/${walletAddress}/balances?api-key=${HELIUS_KEY}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15_000);
+
   try {
-    // Primary: Helius v1 wallet balances (includes USD pricing). Fallback: v0 if v1 returns 404.
-    const v1Url = `https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${HELIUS_KEY}`;
-    let res = await fetch(v1Url);
-    if (res.status === 404) {
-      log("wallet_warn", "Helius v1 returned 404 — falling back to v0/addresses/balances");
-      const v0Url = `https://api.helius.xyz/v0/addresses/${walletAddress}/balances?api-key=${HELIUS_KEY}`;
-      res = await fetch(v0Url);
-    }
+    const res = await fetch(heliusUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
     if (!res.ok) {
       throw new Error(`Helius API error: ${res.status} ${res.statusText}`);
     }
 
     const data = await res.json();
-    const balances = data.balances || data.tokens || [];
 
-    // ─── Find SOL and USDC by mint only (symbol fallback would match impersonators) ──
-    const solEntry  = balances.find(b => b.mint === config.tokens.SOL);
-    const usdcEntry = balances.find(b => b.mint === config.tokens.USDC);
+    // ─── SOL: top-level nativeBalance field in lamports ───────────────────────
+    const solBalance = (data.nativeBalance ?? 0) / LAMPORTS_PER_SOL;
 
-    const solBalance = solEntry?.balance || 0;
-    const solPrice = solEntry?.pricePerToken || 0;
-    const solUsd = solEntry?.usdValue || 0;
-    const usdcBalance = usdcEntry?.balance || 0;
+    // ─── SPL tokens ──────────────────────────────────────────────────────────
+    const rawTokens = Array.isArray(data.tokens) ? data.tokens : [];
+    const usdcEntry = rawTokens.find(t => t.mint === config.tokens.USDC);
+    const usdcBalance = usdcEntry
+      ? (usdcEntry.amount ?? 0) / Math.pow(10, usdcEntry.decimals ?? 6)
+      : 0;
 
-    // ─── Map all tokens ───────────────────────────────────────
-    const enrichedTokens = balances.map(b => ({
-      mint: b.mint,
-      symbol: b.symbol || b.mint.slice(0, 8),
-      balance: b.balance,
-      usd: b.usdValue ? Math.round(b.usdValue * 100) / 100 : null,
-    }));
+    // Enrich with USD prices from Jupiter Price API (best-effort, don't fail if it errors)
+    // Include SOL mint so we get sol_price too
+    let jupiterPrices = {};
+    try {
+      const splMints = rawTokens.map(t => t.mint).filter(Boolean);
+      const allMints = [config.tokens.SOL, ...splMints].slice(0, 50);
+      const priceUrl = `${JUPITER_PRICE_API}?ids=${allMints.join(",")}&showExtraInfo=false`;
+      const priceRes = await fetch(priceUrl, { signal: AbortSignal.timeout(8_000) });
+      if (priceRes.ok) {
+        const priceData = await priceRes.json();
+        jupiterPrices = priceData.data ?? {};
+      }
+    } catch { /* price enrichment is optional */ }
+
+    const solPriceInfo = jupiterPrices[config.tokens.SOL];
+    const solPrice = solPriceInfo?.price ? Math.round(Number(solPriceInfo.price) * 100) / 100 : 0;
+    const solUsd = solPrice > 0 ? Math.round(solBalance * solPrice * 100) / 100 : 0;
+
+    // Build enriched token list (SPL tokens)
+    const enrichedTokens = rawTokens.map(t => {
+      const balance = (t.amount ?? 0) / Math.pow(10, t.decimals ?? 0);
+      const priceInfo = jupiterPrices[t.mint];
+      const price = priceInfo?.price ? Number(priceInfo.price) : null;
+      const usd = (price != null && Number.isFinite(price)) ? Math.round(price * balance * 100) / 100 : null;
+      return {
+        mint: t.mint,
+        symbol: t.symbol || t.mint.slice(0, 8),
+        balance: Math.round(balance * 1e9) / 1e9,
+        usd,
+      };
+    });
+
+    // Prepend SOL as a pseudo-token entry for auto-swap lookups
+    enrichedTokens.unshift({
+      mint: config.tokens.SOL,
+      symbol: "SOL",
+      balance: Math.round(solBalance * 1e6) / 1e6,
+      usd: solUsd || null,
+    });
+
+    const totalUsd = solUsd + enrichedTokens.slice(1).reduce((sum, t) => sum + (t.usd ?? 0), 0);
 
     return {
       wallet: walletAddress,
       sol: Math.round(solBalance * 1e6) / 1e6,
-      sol_price: Math.round(solPrice * 100) / 100,
-      sol_usd: Math.round(solUsd * 100) / 100,
+      sol_price: solPrice,
+      sol_usd: solUsd,
       usdc: Math.round(usdcBalance * 100) / 100,
       tokens: enrichedTokens,
-      total_usd: Math.round((data.totalUsdValue || 0) * 100) / 100,
+      total_usd: Math.round(totalUsd * 100) / 100,
     };
   } catch (error) {
-    log("wallet_error", error.message);
-    return {
-      wallet: walletAddress,
-      sol: 0,
-      sol_price: 0,
-      sol_usd: 0,
-      usdc: 0,
-      tokens: [],
-      total_usd: 0,
-      error: error.message,
-    };
+    clearTimeout(timeoutId);
+    const isTimeout = error.name === "AbortError";
+    log("wallet_error", isTimeout ? `Helius request timed out (15s)` : error.message);
+    // Last resort: RPC balance (SOL only, no SPL tokens)
+    return await _rpcSolBalance(walletAddress);
   }
 }
 
