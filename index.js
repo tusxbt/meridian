@@ -535,12 +535,20 @@ export async function runScreeningCycle({ silent = false } = {}) {
         .map((entry) => `- ${entry.name}: ${entry.reason}`)
         .join("\n");
       const funnelBlock = buildGmgnFunnelReport(gmgnStageCounts, gmgnAllFiltered, { fromStage: 2 });
-      const thresholds = `Thresholds: tvl>$${config.screening.minTvl} | vol>$${config.screening.minVolume} | organic>${config.screening.minOrganic}% | holders>${config.screening.minHolders} | fee/tvl>${config.screening.minFeeActiveTvlRatio}%`;
+      const thresholds = [
+        `tvl $${config.screening.minTvl}–$${config.screening.maxTvl ?? "∞"}`,
+        `vol>$${config.screening.minVolume}`,
+        `organic>${config.screening.minOrganic}%`,
+        `holders>${config.screening.minHolders}`,
+        `fee/tvl>${config.screening.minFeeActiveTvlRatio}`,
+        `bin_step ${config.screening.minBinStep}–${config.screening.maxBinStep}`,
+        `mcap $${config.screening.minMcap}–$${config.screening.maxMcap ?? "∞"}`,
+      ].join(" | ");
       screenReport = funnelBlock
         ? `No candidates available.\n\n${funnelBlock}`
         : combinedExamples
-          ? `No candidates available.\nFiltered examples:\n${combinedExamples}`
-          : `No candidates available (all filtered).\n${thresholds}`;
+          ? `No candidates available.\nFiltered examples:\n${combinedExamples}\n\nActive thresholds: ${thresholds}`
+          : `No candidates available — 0 pools passed server-side filter.\nActive thresholds: ${thresholds}`;
       appendDecision({
         type: "no_deploy",
         actor: "SCREENER",

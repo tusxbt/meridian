@@ -422,6 +422,8 @@ export async function discoverPools({
     s.maxTop10Pct != null ? `base_token_top_10_holder_pct<=${s.maxTop10Pct}` : null,
   ].filter(Boolean).join("&&");
 
+  log("screening", `Discovery query: category=${effectiveCategory} timeframe=${effectiveTimeframe} filters=${filters}`);
+
   const data = await fetchPoolDiscoveryPage({
     page_size,
     filters,
@@ -430,6 +432,7 @@ export async function discoverPools({
   });
 
   let rawPools = Array.isArray(data.data) ? data.data : [];
+  log("screening", `Discovery returned ${rawPools.length} raw pool(s) (API total: ${data.total ?? "?"})`);
 
   if (config.screening.useDiscordSignals) {
     const signalCandidates = await fetchDiscordSignalCandidates().catch((error) => {
@@ -696,6 +699,13 @@ export async function getTopCandidates({ limit = 10 } = {}) {
       return true;
     });
 
+  if (eligible.length < pools.length) {
+    const uniqueReasons = [...new Set(filteredOut.map(f => f.reason))].slice(0, 6);
+    log("screening", `JS filter: ${pools.length} → ${eligible.length} eligible (dropped: ${pools.length - eligible.length}). Top reasons: ${uniqueReasons.join(" | ")}`);
+  } else {
+    log("screening", `JS filter: ${pools.length} → ${eligible.length} eligible`);
+  }
+
   // Step 5: PVP check — on all eligible (before expensive OKX calls)
   if (config.screening.avoidPvpSymbols && eligible.length > 0) {
     await enrichPvpRisk(eligible);
@@ -824,6 +834,8 @@ export async function getTopCandidates({ limit = 10 } = {}) {
       if (eligible.length < beforeBot) log("screening", `Bot filter removed ${beforeBot - eligible.length} pool(s)`);
     }
   }
+
+  log("screening", `After OKX+bot filter: ${eligible.length} eligible`);
 
   if (config.indicators.enabled && eligible.length > 0) {
     const confirmations = await Promise.all(
