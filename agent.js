@@ -351,9 +351,12 @@ export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHis
           step,
         });
 
-        // Lock deploy_position after first attempt regardless of outcome — retrying is never right
+        // Lock deploy_position after first attempt — but ONLY if the tool actually executed
+        // (not a pre-validation block). A blocked result means no on-chain action happened,
+        // so the LLM should be allowed to retry with corrected parameters.
         // For close/swap: only lock on success so genuine failures can be retried
-        if (NO_RETRY_TOOLS.has(functionName)) firedOnce.add(functionName);
+        const wasValidationBlocked = result?.blocked === true && !result?.tx && !result?.position;
+        if (NO_RETRY_TOOLS.has(functionName) && !wasValidationBlocked) firedOnce.add(functionName);
         else if (ONCE_PER_SESSION.has(functionName) && result.success === true) firedOnce.add(functionName);
 
         return {

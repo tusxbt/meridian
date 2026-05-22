@@ -769,9 +769,17 @@ async function runSafetyChecks(name, args) {
           reason: "This agent only supports single-side SOL deploys. Use amount_y/amount_sol and keep amount_x=0.",
         };
       }
-      const requestedBinsBelow = Number(args.bins_below ?? config.strategy.defaultBinsBelow ?? config.strategy.minBinsBelow);
-      const requestedBinsAbove = Number(args.bins_above ?? 0);
       const minBinsBelow = Math.max(MIN_SAFE_BINS_BELOW, Number(config.strategy.minBinsBelow ?? MIN_SAFE_BINS_BELOW));
+      // bins_below=0 is always a miscomputation — fall back to config minimum silently
+      const rawBinsBelow = Number(args.bins_below ?? config.strategy.defaultBinsBelow ?? config.strategy.minBinsBelow);
+      const requestedBinsBelow = (Number.isFinite(rawBinsBelow) && rawBinsBelow > 0)
+        ? rawBinsBelow
+        : minBinsBelow;
+      if (rawBinsBelow !== requestedBinsBelow) {
+        log("warn", `bins_below=${args.bins_below ?? "missing"} auto-corrected to ${requestedBinsBelow} (minBinsBelow)`);
+        args = { ...args, bins_below: requestedBinsBelow };
+      }
+      const requestedBinsAbove = Number(args.bins_above ?? 0);
       const isSingleSidedSol = deployAmountY > 0 && deployAmountX <= 0;
       const requestedTotalBins = requestedBinsBelow + requestedBinsAbove;
       const requestedVolatility = args.volatility == null ? null : Number(args.volatility);
