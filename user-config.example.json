@@ -15,8 +15,8 @@
 
   "strategy": "bid_ask",
   "minBinsBelow": 35,
-  "maxBinsBelow": 69,
-  "defaultBinsBelow": 69,
+  "maxBinsBelow": 60,
+  "defaultBinsBelow": 60,
 
   "timeframe": "5m",
   "category": "trending",
