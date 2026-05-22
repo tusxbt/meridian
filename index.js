@@ -689,10 +689,12 @@ ${candidateBlocks.join("\n\n")}
 STEPS:
 1. Decide whether any candidate is worth deploying. A single remaining candidate is not automatically good enough.
 2. Pick the best candidate only if it has real conviction from narrative quality, smart wallets, and pool metrics. If the list has only one pool and it lacks narrative or smart-wallet confirmation, skip the cycle.
-3. If a pool qualifies, call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
+3. If a pool qualifies, call deploy_position DIRECTLY — all enrichment data (active_bin, token info, smart wallets, narrative) is already embedded in the candidate blocks above.
+   DO NOT call get_active_bin, get_token_holders, get_token_narrative, get_token_info, or check_smart_wallets_on_pool — calling these wastes steps and is incorrect.
    strategy = ${config.strategy.strategy} (always use this, never change it).
    bins_below = round(${config.strategy.minBinsBelow} + (candidate volatility/5)*${config.strategy.maxBinsBelow - config.strategy.minBinsBelow}) clamped to [${config.strategy.minBinsBelow},${config.strategy.maxBinsBelow}].
-   pass deploy_position.volatility = the candidate volatility value.
+   If candidate has no volatility or volatility=0, use bins_below = ${config.strategy.minBinsBelow}.
+   pass deploy_position.volatility = the candidate volatility value (pass 0 or omit if unknown).
    bins_above = 0. Single-side SOL only: set amount_y, keep amount_x = 0.
 4. Report in this exact format (no tables, no extra sections):
    🚀 DEPLOYED
@@ -2190,7 +2192,7 @@ Commands:
         const deployAmt = getDeployAmt();
         console.log(`\nDeploying ${deployAmt} SOL into ${pool.name}...\n`);
         const { content: reply } = await agentLoop(
-          `Deploy ${deployAmt} SOL into pool ${pool.pool} (${pool.name}). Call get_active_bin first then deploy_position. Report result.`,
+          `Deploy ${deployAmt} SOL into pool ${pool.pool} (${pool.name}). Call deploy_position directly — active_bin and enrichment data are already known. DO NOT call get_active_bin, get_token_holders, get_token_narrative, or check_smart_wallets_on_pool. Report result.`,
           config.llm.maxSteps,
           [],
           "SCREENER"

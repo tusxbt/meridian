@@ -789,8 +789,10 @@ async function runSafetyChecks(name, args) {
       const requestedBinsAbove = Number(args.bins_above ?? 0);
       const isSingleSidedSol = deployAmountY > 0 && deployAmountX <= 0;
       const requestedTotalBins = requestedBinsBelow + requestedBinsAbove;
-      const requestedVolatility = args.volatility == null ? null : Number(args.volatility);
-      if (args.volatility != null && (!Number.isFinite(requestedVolatility) || requestedVolatility <= 0)) {
+      // volatility=0 treated same as null (missing data) — bins_below falls back to minBinsBelow in dlmm.js
+      const rawVolatility = args.volatility == null ? null : Number(args.volatility);
+      const requestedVolatility = (rawVolatility === 0) ? null : rawVolatility;
+      if (requestedVolatility != null && (!Number.isFinite(requestedVolatility) || requestedVolatility < 0)) {
         return {
           pass: false,
           reason: `volatility ${args.volatility} is invalid. Refusing deploy because the volatility feed is unusable.`,
