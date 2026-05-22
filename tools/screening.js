@@ -25,7 +25,7 @@ const PVP_SHORTLIST_LIMIT = 2;
 const PVP_RIVAL_LIMIT = 2;
 const PVP_MIN_ACTIVE_TVL = 5_000;
 const PVP_MIN_HOLDERS = 500;
-const PVP_MIN_GLOBAL_FEES_SOL = 15;
+const PVP_MIN_GLOBAL_FEES_SOL = 20;
 
 // ── Hardcoded floors — cannot be overridden by user config ──────────────────
 const HARD_MIN_TVL              = 7_500;
@@ -51,13 +51,11 @@ function scoreCandidate(pool) {
   if (Number.isFinite(Number(pool.gmgn_score))) {
     return Number(pool.gmgn_score) + Number(pool.fee_active_tvl_ratio || 0) * 500;
   }
-  const feeTvl = Number(pool.fee_active_tvl_ratio || 0);
+  const feeTvl  = Number(pool.fee_active_tvl_ratio || 0);
   const organic = Number(pool.organic_score || 0);
-  const volume = Number(pool.volume_window || 0);
+  const volume  = Number(pool.volume_window || pool.volume || 0);
   const holders = Number(pool.holders || 0);
-  const hasSmartMoney = pool.smart_money_buy ? 200 : 0;
-  const hasDiscordSignal = pool.discord_signal ? 100 : 0;
-  return hasSmartMoney + hasDiscordSignal + volume * 0.05 + feeTvl * 300 + organic * 5 + holders / 200;
+  return feeTvl * 1000 + organic * 10 + volume / 100 + holders / 100;
 }
 
 function numeric(value) {
@@ -177,6 +175,10 @@ function getRawPoolScreeningRejectReason(pool, s) {
   if (s.maxTokenAgeHours != null && createdAtMs != null) {
     const minCreatedAtMs = Date.now() - s.maxTokenAgeHours * 3_600_000;
     if (createdAtMs < minCreatedAtMs) return `token age above maxTokenAgeHours ${s.maxTokenAgeHours}`;
+  }
+  const top10Pct = numeric(pool?.base_token_top_10_holder_pct);
+  if (s.maxTop10Pct != null && top10Pct != null && top10Pct > s.maxTop10Pct) {
+    return `top 10 holder pct ${top10Pct.toFixed(1)}% above maxTop10Pct ${s.maxTop10Pct}%`;
   }
   if (fee != null && fee > 0 && (volume == null || volume === 0)) {
     return "fee income without swap volume — likely farming rewards, not real trading fees";
@@ -417,6 +419,7 @@ export async function discoverPools({
     Array.isArray(s.allowedLaunchpads) && s.allowedLaunchpads.length > 0
       ? `base_token_launchpad=[${s.allowedLaunchpads.join(",")}]`
       : null,
+    s.maxTop10Pct != null ? `base_token_top_10_holder_pct<=${s.maxTop10Pct}` : null,
   ].filter(Boolean).join("&&");
 
   const data = await fetchPoolDiscoveryPage({
@@ -691,10 +694,9 @@ export async function getTopCandidates({ limit = 10 } = {}) {
         return false;
       }
       return true;
-    })
-    .sort((a, b) => scoreCandidate(b) - scoreCandidate(a))
-    .slice(0, limit);
+    });
 
+  // Step 5: PVP check — on all eligible (before expensive OKX calls)
   if (config.screening.avoidPvpSymbols && eligible.length > 0) {
     await enrichPvpRisk(eligible);
     if (config.screening.blockPvpSymbols) {
@@ -805,6 +807,22 @@ export async function getTopCandidates({ limit = 10 } = {}) {
     });
     eligible.splice(0, eligible.length, ...filtered);
     if (eligible.length < before) log("dev_blocklist", `Filtered ${before - eligible.length} pool(s) via OKX creator check`);
+
+    // maxBotHoldersPct — suspicious_pct from OKX advanced-info is the best proxy for bot wallets
+    const maxBotPct = config.screening.maxBotHoldersPct;
+    if (maxBotPct != null) {
+      const beforeBot = eligible.length;
+      eligible.splice(0, eligible.length, ...eligible.filter((p) => {
+        const botPct = p.suspicious_pct ?? null;
+        if (botPct != null && botPct > maxBotPct) {
+          log("screening", `Bot filter: dropped ${p.name} — suspicious_pct ${botPct}% > maxBotHoldersPct ${maxBotPct}%`);
+          pushFilteredReason(filteredOut, p, `suspicious/bot holders ${botPct}% above maxBotHoldersPct ${maxBotPct}%`);
+          return false;
+        }
+        return true;
+      }));
+      if (eligible.length < beforeBot) log("screening", `Bot filter removed ${beforeBot - eligible.length} pool(s)`);
+    }
   }
 
   if (config.indicators.enabled && eligible.length > 0) {
@@ -841,8 +859,12 @@ export async function getTopCandidates({ limit = 10 } = {}) {
     }
   }
 
+  // Step 8: Final scoring — sort by formula after ALL enrichment/filtering is complete
+  eligible.sort((a, b) => scoreCandidate(b) - scoreCandidate(a));
+  const topCandidates = eligible.slice(0, limit);
+
   return {
-    candidates: eligible,
+    candidates: topCandidates,
     total_screened: discovery.total ?? pools.length,
     source,
     filtered_examples: filteredOut.slice(0, 3),
@@ -901,6 +923,7 @@ function condensePool(p) {
 
     // Token health
     holders: p.base_token_holders,
+    top10_pct: fix(p.base_token_top_10_holder_pct, 1),
     mcap: round(p.token_x?.market_cap),
     organic_score: Math.round(p.token_x?.organic_score || 0),
     token_age_hours: (() => {
