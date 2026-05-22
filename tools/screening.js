@@ -128,9 +128,11 @@ function getRawPoolScreeningRejectReason(pool, s) {
 
   if (!quoteMint || !ALLOWED_QUOTE_MINTS.has(quoteMint)) { return `quote ${quote?.symbol || quoteMint?.slice(0,8) || "unknown"} is not a correlated pair (SOL/USDC/USDT only)`; }
 
-  if (mcap == null || mcap < s.minMcap) return `mcap ${mcap ?? "unknown"} below minMcap ${s.minMcap}`;
+  if (mcap == null) return `mcap unknown (required minMcap ${s.minMcap})`;
+  if (mcap < s.minMcap) return `mcap ${mcap} below minMcap ${s.minMcap}`;
   if (mcap > s.maxMcap) return `mcap ${mcap} above maxMcap ${s.maxMcap}`;
-  if (holders == null || holders < s.minHolders) return `holders ${holders ?? "unknown"} below minHolders ${s.minHolders}`;
+  if (holders == null) return `holders unknown (required minHolders ${s.minHolders})`;
+  if (holders < s.minHolders) return `holders ${holders} below minHolders ${s.minHolders}`;
   const volumeFloor = Math.max(s.minVolume, getHardVolumeFloor(s.timeframe)); if (volume == null || volume < volumeFloor) return `volume ${volume ?? "unknown"} below floor ${volumeFloor}`;
   const tvlFloor = Math.max(s.minTvl, HARD_MIN_TVL); if (tvl == null || tvl < tvlFloor) return `TVL ${tvl ?? "unknown"} below floor ${tvlFloor}`;
   if (s.maxTvl != null && tvl > s.maxTvl) return `TVL ${tvl} above maxTvl ${s.maxTvl}`;
@@ -162,12 +164,13 @@ function getRawPoolScreeningRejectReason(pool, s) {
     return `blocked launchpad (${launchpad})`;
   }
   if (s.minTokenAgeHours != null) {
+    if (createdAt == null) return `token age unknown (required minTokenAgeHours ${s.minTokenAgeHours})`;
     const maxCreatedAt = Date.now() - s.minTokenAgeHours * 3_600_000;
-    if (createdAt == null || createdAt > maxCreatedAt) return `token age below minTokenAgeHours ${s.minTokenAgeHours}`;
+    if (createdAt > maxCreatedAt) return `token age below minTokenAgeHours ${s.minTokenAgeHours}`;
   }
-  if (s.maxTokenAgeHours != null) {
+  if (s.maxTokenAgeHours != null && createdAt != null) {
     const minCreatedAt = Date.now() - s.maxTokenAgeHours * 3_600_000;
-    if (createdAt == null || createdAt < minCreatedAt) return `token age above maxTokenAgeHours ${s.maxTokenAgeHours}`;
+    if (createdAt < minCreatedAt) return `token age above maxTokenAgeHours ${s.maxTokenAgeHours}`;
   }
   if (fee != null && fee > 0 && (volume == null || volume === 0)) {
     return "fee income without swap volume — likely farming rewards, not real trading fees";

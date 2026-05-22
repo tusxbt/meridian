@@ -448,9 +448,16 @@ export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, 
 
 export async function notifyClose({ pair, pnlUsd, pnlPct, reason }) {
   const SEP = "──────────────────";
-  const sign = (pnlUsd ?? 0) >= 0 ? "+" : "";
-  const pnlSign = (pnlPct ?? 0) >= 0 ? "+" : "";
-  const emoji = (pnlUsd ?? 0) >= 0 ? "🟢" : "🔴";
+  // Distinguish "PnL unknown" (null/undefined) from "PnL exactly $0"
+  const pnlKnown = pnlUsd != null && Number.isFinite(Number(pnlUsd));
+  const pnlNum = pnlKnown ? Number(pnlUsd) : 0;
+  const pctNum = pnlPct != null && Number.isFinite(Number(pnlPct)) ? Number(pnlPct) : 0;
+  const emoji = pnlKnown ? (pnlNum >= 0 ? "🟢" : "🔴") : "⚪";
+  const sign = pnlNum >= 0 ? "+" : "";
+  const pnlSign = pctNum >= 0 ? "+" : "";
+  const pnlLine = pnlKnown
+    ? `💵 PnL: ${sign}$${pnlNum.toFixed(2)} (${pnlSign}${pctNum.toFixed(2)}%)`
+    : `💵 PnL: not yet settled (data unavailable)`;
   const reasonClean = reason
     ? esc(String(reason).replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/\n+/g, " ").trim().slice(0, 200))
     : null;
@@ -458,7 +465,7 @@ export async function notifyClose({ pair, pnlUsd, pnlPct, reason }) {
   await sendHTML(
     `${emoji} <b>CLOSED — ${esc(pair)}</b>\n` +
     `${SEP}\n` +
-    `💵 PnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${pnlSign}${(pnlPct ?? 0).toFixed(2)}%)` +
+    `${pnlLine}` +
     reasonLine
   );
 }

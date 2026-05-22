@@ -725,7 +725,7 @@ Pass null or empty string to clear an existing instruction.`,
             description: "The instruction to persist (e.g. 'hold until PnL >= 5%'). Pass empty string to clear."
           }
         },
-        required: ["position_address", "instruction"]
+        required: ["position_address"]
       }
     }
   },
@@ -1040,7 +1040,7 @@ Blacklisted tokens are filtered BEFORE the LLM even sees pool candidates.`,
             description: "Why this token is being blacklisted"
           }
         },
-        required: ["mint", "reason"]
+        required: ["mint"]
       }
     }
   },

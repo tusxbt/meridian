@@ -398,7 +398,13 @@ After executing, write a brief one-line result per position.
           ? (config.management.outOfRangeDownWaitMinutes ?? 30)
           : config.management.outOfRangeWaitMinutes;
         if (!p.in_range && p.minutes_out_of_range >= waitThreshold) {
-          notifyOutOfRange({ pair: p.pair, minutesOOR: p.minutes_out_of_range, waitMins: waitThreshold }).catch(() => { });
+          // Dedup with PnL-poll OOR progress map: only fire if no OOR notification went out
+          // in the last 5 min (otherwise the user is already getting per-minute updates)
+          const lastNotify = _oorProgressNotifyAt.get(p.position) ?? 0;
+          if (Date.now() - lastNotify >= 5 * 60_000) {
+            _oorProgressNotifyAt.set(p.position, Date.now());
+            notifyOutOfRange({ pair: p.pair, minutesOOR: p.minutes_out_of_range, waitMins: waitThreshold }).catch(() => { });
+          }
         }
       }
     }

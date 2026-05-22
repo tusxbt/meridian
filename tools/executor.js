@@ -166,7 +166,7 @@ async function validateDeployPoolThresholds(args) {
       reason: `Pool TVL $${tvl} is below configured minTvl $${minTvl}.`,
     };
   }
-  if (maxTvl != null && maxTvl > 0 && tvl > maxTvl) {
+  if (maxTvl != null && Number.isFinite(maxTvl) && tvl > maxTvl) {
     return {
       pass: false,
       reason: `Pool TVL $${tvl} is above configured maxTvl $${maxTvl}.`,
@@ -682,7 +682,7 @@ export async function executeTool(name, args) {
       } else if (name === "close_position") {
         const closeReason = args.reason ?? _pendingCloseReasons.get(args.position_address) ?? null;
         _pendingCloseReasons.delete(args.position_address);
-        notifyClose({ pair: result.pool_name || args.position_address?.slice(0, 8), pnlUsd: result.pnl_usd ?? 0, pnlPct: result.pnl_pct ?? 0, reason: closeReason }).catch(() => {});
+        notifyClose({ pair: result.pool_name || args.position_address?.slice(0, 8), pnlUsd: result.pnl_usd ?? null, pnlPct: result.pnl_pct ?? null, reason: closeReason }).catch(() => {});
         // Note low-yield closes in pool memory so screener avoids redeploying
         if (closeReason && String(closeReason).toLowerCase().includes("yield")) {
           const poolAddr = result.pool || args.pool_address;
@@ -853,15 +853,20 @@ async function runSafetyChecks(name, args) {
         };
       }
 
-      // Block same base token across different pools
-      if (args.base_mint) {
+      // Block same base token across different pools — fall back to validated pool detail
+      // when LLM omits base_mint, so duplicate-mint guard isn't silently skipped
+      const effectiveBaseMint = args.base_mint
+        || _lastValidatedPoolDetail?.token_x?.address
+        || _lastValidatedPoolDetail?.base?.mint
+        || null;
+      if (effectiveBaseMint) {
         const alreadyHasMint = positions.positions.some(
-          (p) => p.base_mint === args.base_mint
+          (p) => p.base_mint === effectiveBaseMint
         );
         if (alreadyHasMint) {
           return {
             pass: false,
-            reason: `Already holding base token ${args.base_mint} in another pool. One position per token only.`,
+            reason: `Already holding base token ${effectiveBaseMint} in another pool. One position per token only.`,
           };
         }
       }
