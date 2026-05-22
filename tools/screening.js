@@ -114,11 +114,13 @@ function getRawPoolScreeningRejectReason(pool, s) {
   const baseOrganic = numeric(base?.organic_score);
   const quoteOrganic = numeric(quote?.organic_score);
   const launchpad = getPoolLaunchpad(pool);
-  // created_at from Meteora API is in seconds; from Jupiter enrichment (enrichDiscordSignalLaunchpads) it's in ms
+  // created_at from Meteora API is in MILLISECONDS (confirmed via field value magnitude).
+  // Jupiter enrichment (enrichDiscordSignalLaunchpads) also sets it in ms via Date.parse().
+  // Magnitude check handles both sources robustly: >1e12 = ms (use directly), else treat as seconds (* 1000).
   const rawCreatedAt = numeric(base?.created_at);
   const createdAtMs = rawCreatedAt == null ? null
-    : rawCreatedAt > 1e12 ? rawCreatedAt           // already ms (Jupiter enrichment via Date.parse)
-    : rawCreatedAt * 1000;                          // seconds → ms (Meteora native)
+    : rawCreatedAt > 1e12 ? rawCreatedAt           // ms — Meteora native and Jupiter enrichment
+    : rawCreatedAt * 1000;                          // fallback: seconds → ms
   const fee = numeric(pool?.fee);
   const quoteMint = quote?.address;
 
@@ -288,31 +290,36 @@ async function enrichDiscordSignalLaunchpads(rawPools) {
   const byMint = new Map();
   for (const result of results) {
     if (result.status !== "fulfilled") continue;
-    const launchpad = result.value.asset?.launchpad || result.value.asset?.launchpadPlatform || null;
-    if (!launchpad) continue;
+    const asset = result.value.asset;
+    if (!asset) continue; // Jupiter returned no matching asset at all
+    const launchpad = asset.launchpad || asset.launchpadPlatform || null;
+    // Store ALL enrichment data even when launchpad is null —
+    // holderCount / organicScore / createdAt are still useful for downstream filters
     byMint.set(result.value.mint, {
       launchpad,
-      dev: result.value.asset?.dev || null,
-      holderCount: numeric(result.value.asset?.holderCount),
-      organicScore: numeric(result.value.asset?.organicScore),
-      marketCap: numeric(result.value.asset?.mcap ?? result.value.asset?.fdv),
-      createdAt: result.value.asset?.createdAt ? Date.parse(result.value.asset.createdAt) : null,
+      dev: asset.dev || null,
+      holderCount: numeric(asset.holderCount),
+      organicScore: numeric(asset.organicScore),
+      marketCap: numeric(asset.mcap ?? asset.fdv),
+      createdAt: asset.createdAt ? Date.parse(asset.createdAt) : null,
     });
   }
 
   for (const pool of missing) {
     const mint = getPoolBaseMint(pool);
     const asset = byMint.get(mint);
-    if (!asset) continue;
+    if (!asset) continue; // no Jupiter data for this mint
     pool.token_x ||= {};
-    pool.token_x.launchpad = asset.launchpad;
-    pool.base_token_launchpad = asset.launchpad;
+    if (asset.launchpad) {
+      pool.token_x.launchpad = asset.launchpad;
+      pool.base_token_launchpad = asset.launchpad;
+      log("screening", `Discord signal launchpad enriched from Jupiter: ${pool.name || mint} — ${asset.launchpad}`);
+    }
     if (asset.dev && !pool.token_x.dev) pool.token_x.dev = asset.dev;
     if (asset.holderCount != null && pool.base_token_holders == null) pool.base_token_holders = asset.holderCount;
     if (asset.organicScore != null && pool.token_x.organic_score == null) pool.token_x.organic_score = asset.organicScore;
     if (asset.marketCap != null && pool.token_x.market_cap == null) pool.token_x.market_cap = asset.marketCap;
     if (asset.createdAt != null && pool.token_x.created_at == null) pool.token_x.created_at = asset.createdAt;
-    log("screening", `Discord signal launchpad enriched from Jupiter: ${pool.name || mint} — ${asset.launchpad}`);
   }
 }
 
@@ -587,7 +594,8 @@ export async function getTopCandidates({ limit = 10 } = {}) {
   const getBinStep  = (p) => Number(p.bin_step ?? p.dlmm_params?.bin_step ?? NaN);
   const getAgeHours = (p) => {
     if (p.token_age_hours != null) return Number(p.token_age_hours);
-    // Fallback for non-condensed pools: created_at may be seconds (Meteora) or ms (Jupiter enrichment)
+    // Fallback for non-condensed pools: Meteora sends created_at in ms; Jupiter enrichment also in ms.
+    // Magnitude check: >1e12 = ms (use directly), else treat as seconds (* 1000).
     const raw = p.token_x?.created_at;
     if (raw == null) return null;
     const ms = Number(raw) > 1e12 ? Number(raw) : Number(raw) * 1000;
@@ -634,7 +642,7 @@ export async function getTopCandidates({ limit = 10 } = {}) {
         if (binStep > s.maxBinStep) { pushFilteredReason(filteredOut, p, `bin_step ${binStep} above maxBinStep ${s.maxBinStep}`); return false; }
       }
       const volume = getVolume(p);
-      if (Number.isFinite(volume) && volume > 0) {
+      if (Number.isFinite(volume)) { // only skip if volume is unknown (NaN) — volume=0 must still be checked
         const volumeFloor = Math.max(s.minVolume, getHardVolumeFloor(s.timeframe));
         if (volume < volumeFloor) {
           pushFilteredReason(filteredOut, p, `volume ${volume} below floor ${volumeFloor}`); return false;
@@ -898,7 +906,8 @@ function condensePool(p) {
     token_age_hours: (() => {
       const raw = p.token_x?.created_at;
       if (raw == null) return null;
-      // created_at from Meteora API is seconds; from Jupiter enrichment (enrichDiscordSignalLaunchpads) it's ms
+      // Meteora API sends created_at in ms; Jupiter enrichment also in ms (Date.parse).
+      // Magnitude check: >1e12 = ms (use directly), else treat as seconds (* 1000).
       const ms = Number(raw) > 1e12 ? Number(raw) : Number(raw) * 1000;
       return Math.floor((Date.now() - ms) / 3_600_000);
     })(),
