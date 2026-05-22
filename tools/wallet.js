@@ -196,6 +196,31 @@ export function normalizeMint(mint) {
   return mint;
 }
 
+/**
+ * Query SPL token balance directly from RPC (bypasses Helius).
+ * Used as fallback when Helius is unavailable or returns no entry for the mint.
+ * Returns the ui-amount (decimal) balance, or null on failure.
+ */
+export async function getSplTokenBalance(mintAddress) {
+  try {
+    const conn = getConnection();
+    const wallet = getWallet();
+    const mintPk = new PublicKey(mintAddress);
+    const walletPk = wallet.publicKey;
+    // getTokenAccountsByOwner finds all SPL accounts for this mint owned by wallet
+    const accounts = await conn.getTokenAccountsByOwner(walletPk, { mint: mintPk });
+    let total = 0;
+    for (const { account } of accounts.value) {
+      const info = await conn.getTokenAccountBalance(account.pubkey).catch(() => null);
+      if (info?.value?.uiAmount) total += info.value.uiAmount;
+    }
+    return total; // 0 if no accounts or all empty
+  } catch (e) {
+    log("wallet_warn", `getSplTokenBalance(${mintAddress.slice(0, 8)}): ${e.message}`);
+    return null; // null = query failed
+  }
+}
+
 // Convert a decimal `amount` to its raw smallest-unit string without floating-point
 // precision loss (Math.floor(amount * 10^d) breaks for amount * 10^d > 2^53).
 function toRawAmount(amount, decimals) {

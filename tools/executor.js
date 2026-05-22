@@ -9,7 +9,7 @@ import {
   closePosition,
   searchPools,
 } from "./dlmm.js";
-import { getWalletBalances, swapToken } from "./wallet.js";
+import { getWalletBalances, swapToken, getSplTokenBalance } from "./wallet.js";
 import { studyTopLPers } from "./study.js";
 import { addLesson, clearAllLessons, clearPerformance, removeLessonsByKeyword, getPerformanceHistory, pinLesson, unpinLesson, listLessons } from "../lessons.js";
 import { setPositionInstruction } from "../state.js";
@@ -688,63 +688,66 @@ export async function executeTool(name, args) {
           const poolAddr = result.pool || args.pool_address;
           if (poolAddr) addPoolNote({ pool_address: poolAddr, note: `Closed: low yield (fee/TVL below threshold) at ${new Date().toISOString().slice(0,10)}` }).catch?.(() => {});
         }
-        // Auto-swap base token back to SOL unless user said to hold
-        if (!args.skip_swap && result.base_mint) {
+        // Auto-swap base token back to SOL — ALWAYS attempt, never skip
+        if (result.base_mint) {
           try {
+            const mint = result.base_mint;
             const balances = await getWalletBalances({});
-            const token = balances.tokens?.find(t => t.mint === result.base_mint);
-            // Treat null usd as "price unavailable" — swap if balance is positive
-            const usd = token?.usd == null ? null : Number(token.usd);
-            const hasBalance = token && Number(token.balance) > 0;
-            const isWorthSwapping = hasBalance && (usd == null || usd >= 0.10);
-            if (isWorthSwapping) {
-              const usdLabel = usd != null ? `$${usd.toFixed(2)}` : "price unknown";
-              log("executor", `Auto-swapping ${token.symbol || result.base_mint.slice(0, 8)} (${usdLabel}) back to SOL`);
-              const swapResult = await swapToken({ input_mint: result.base_mint, output_mint: "SOL", amount: token.balance });
-              // Tell the model the swap already happened so it doesn't call swap_token again
+            const token = balances.tokens?.find(t => t.mint === mint);
+            const tokenSymbol = token?.symbol || mint.slice(0, 8);
+            const tokenBalance = token ? Number(token.balance) : null;
+            const usd = token?.usd != null ? Number(token.usd) : null;
+
+            if (tokenBalance != null && tokenBalance > 0) {
+              // Normal path: Helius confirmed balance > 0 — swap full amount, no dust threshold
+              const usdLabel = usd != null ? `$${usd.toFixed(4)}` : "price unknown";
+              log("executor", `Auto-swapping ${tokenSymbol} (${usdLabel}) back to SOL`);
+              const swapResult = await swapToken({ input_mint: mint, output_mint: "SOL", amount: tokenBalance });
               result.auto_swapped = true;
-              result.auto_swap_note = `Base token already auto-swapped back to SOL (${token.symbol || result.base_mint.slice(0, 8)} → SOL). Do NOT call swap_token again.`;
+              result.auto_swap_note = `Base token auto-swapped back to SOL (${tokenSymbol} → SOL). Do NOT call swap_token again.`;
               if (swapResult?.amount_out) result.sol_received = swapResult.amount_out;
-              // Notify Telegram about the auto-swap
               if (swapResult?.tx) {
                 notifySwap({
-                  inputSymbol: token.symbol || result.base_mint.slice(0, 8),
+                  inputSymbol: tokenSymbol,
                   outputSymbol: "SOL",
-                  amountIn: token.balance,
+                  amountIn: tokenBalance,
                   amountOut: swapResult.amount_out,
                   tx: swapResult.tx,
                 }).catch(() => {});
               }
-            } else if (!token || !hasBalance) {
-              if (balances.source === "rpc_fallback") {
-                // Helius unavailable — RPC fallback returns SOL only, no SPL tokens.
-                // Attempt the swap anyway; swapToken will fail gracefully if balance is truly 0.
-                log("executor", `Auto-swap: Helius unavailable (RPC fallback), attempting swap for ${result.base_mint.slice(0, 8)} without balance confirmation`);
-                try {
-                  const swapResult = await swapToken({ input_mint: result.base_mint, output_mint: "SOL" });
-                  result.auto_swapped = true;
-                  result.auto_swap_note = `Base token auto-swapped back to SOL (Helius unavailable — swapped without balance pre-check). Do NOT call swap_token again.`;
-                  if (swapResult?.amount_out) result.sol_received = swapResult.amount_out;
-                  if (swapResult?.tx) {
-                    notifySwap({
-                      inputSymbol: result.base_mint.slice(0, 8),
-                      outputSymbol: "SOL",
-                      amountIn: null,
-                      amountOut: swapResult.amount_out,
-                      tx: swapResult.tx,
-                    }).catch(() => {});
-                  }
-                } catch (swapErr) {
-                  log("executor_warn", `Auto-swap (RPC fallback path) failed: ${swapErr.message}`);
-                  result.auto_swap_note = `Auto-swap attempted without balance check (Helius unavailable) but failed: ${swapErr.message}. Call swap_token manually if needed.`;
-                }
-              } else {
-                log("executor", `Auto-swap skipped: base token ${result.base_mint.slice(0, 8)} not found in wallet (relay may have already converted it)`);
-                result.auto_swap_note = `Base token not found in wallet after close — relay may have already converted it to SOL. Verify wallet balance before calling swap_token.`;
-              }
+            } else if (tokenBalance === 0) {
+              // Helius confirmed zero balance — relay or DLMM already converted it
+              log("executor", `Auto-swap: ${tokenSymbol} balance confirmed 0 — already converted to SOL`);
+              result.auto_swap_note = `Base token balance is 0 after close — already converted to SOL.`;
             } else {
-              log("executor", `Auto-swap skipped: base token ${token.symbol || result.base_mint.slice(0, 8)} value $${usd.toFixed(2)} is below $0.10 dust threshold`);
-              result.auto_swap_note = `Base token value $${usd.toFixed(2)} is below $0.10 dust threshold — swap skipped.`;
+              // Token not in Helius list (RPC fallback returns SOL-only, or brief API lag).
+              // Query SPL balance directly from RPC before giving up.
+              const rpcSource = balances.source === "rpc_fallback" ? "RPC fallback" : "Helius returned no entry";
+              log("executor", `Auto-swap: ${tokenSymbol} not in wallet list (${rpcSource}) — querying RPC directly`);
+              const rpcBalance = await getSplTokenBalance(mint);
+              if (rpcBalance != null && rpcBalance > 0) {
+                log("executor", `Auto-swap: RPC confirms ${tokenSymbol} balance=${rpcBalance} — swapping`);
+                const swapResult = await swapToken({ input_mint: mint, output_mint: "SOL", amount: rpcBalance });
+                result.auto_swapped = true;
+                result.auto_swap_note = `Base token auto-swapped back to SOL via RPC balance check (${tokenSymbol} → SOL). Do NOT call swap_token again.`;
+                if (swapResult?.amount_out) result.sol_received = swapResult.amount_out;
+                if (swapResult?.tx) {
+                  notifySwap({
+                    inputSymbol: tokenSymbol,
+                    outputSymbol: "SOL",
+                    amountIn: rpcBalance,
+                    amountOut: swapResult.amount_out,
+                    tx: swapResult.tx,
+                  }).catch(() => {});
+                }
+              } else if (rpcBalance === 0) {
+                log("executor", `Auto-swap: RPC confirms ${tokenSymbol} balance=0 — already converted to SOL`);
+                result.auto_swap_note = `Base token balance confirmed 0 via RPC — already converted to SOL.`;
+              } else {
+                // rpcBalance === null → RPC query itself failed
+                log("executor_warn", `Auto-swap: RPC balance query failed for ${tokenSymbol} — swap skipped`);
+                result.auto_swap_note = `Auto-swap skipped: RPC balance query failed for ${tokenSymbol}. Call swap_token manually if needed.`;
+              }
             }
           } catch (e) {
             log("executor_warn", `Auto-swap after close failed: ${e.message}`);
