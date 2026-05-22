@@ -163,8 +163,8 @@ function getRawPoolScreeningRejectReason(pool, s) {
   if (includesCaseInsensitive(s.blockedLaunchpads, launchpad)) {
     return `blocked launchpad (${launchpad})`;
   }
-  if (s.minTokenAgeHours != null) {
-    if (createdAt == null) return `token age unknown (required minTokenAgeHours ${s.minTokenAgeHours})`;
+  if (s.minTokenAgeHours != null && createdAt != null) {
+    // Only reject if age is KNOWN and too young — API doesn't always return created_at
     const maxCreatedAt = Date.now() - s.minTokenAgeHours * 3_600_000;
     if (createdAt > maxCreatedAt) return `token age below minTokenAgeHours ${s.minTokenAgeHours}`;
   }
@@ -582,12 +582,13 @@ export async function getTopCandidates({ limit = 10 } = {}) {
   const getBinStep  = (p) => Number(p.bin_step ?? p.dlmm_params?.bin_step ?? NaN);
   const getAgeHours = (p) => {
     if (p.token_age_hours != null) return Number(p.token_age_hours);
-    if (p.token_x?.created_at) return (Date.now() - Number(p.token_x.created_at)) / 3_600_000;
+    // condensed pools have token_age_hours; raw pools may have token_x.created_at (seconds epoch)
+    if (p.token_x?.created_at) return (Date.now() - Number(p.token_x.created_at) * 1000) / 3_600_000;
     return null;
   };
-  const getOrganic  = (p) => p.token_x?.organic_score; // null for GMGN — skip when null
+  const getOrganic  = (p) => p.base?.organic ?? p.token_x?.organic_score ?? null; // condensed: base.organic; raw: token_x.organic_score
   const getLaunchpad = (p) => p.launchpad ?? getPoolLaunchpad(p);
-  const getVolume   = (p) => Number(p.volume ?? NaN);
+  const getVolume   = (p) => Number(p.volume ?? p.volume_window ?? NaN); // condensed: volume_window; raw: volume
   const isGmgn = (p) => p.gmgn === true;
 
   const eligible = pools
@@ -638,14 +639,15 @@ export async function getTopCandidates({ limit = 10 } = {}) {
         if (baseOrganic == null || baseOrganic < s.minOrganic) {
           pushFilteredReason(filteredOut, p, `base organic ${baseOrganic ?? "unknown"} below minOrganic ${s.minOrganic}`); return false;
         }
-        const quoteOrganic = p.token_y?.organic_score;
+        const quoteOrganic = p.quote?.organic ?? p.token_y?.organic_score ?? null; // condensed: quote.organic; raw: token_y.organic_score
         if (quoteOrganic == null || quoteOrganic < s.minQuoteOrganic) {
           pushFilteredReason(filteredOut, p, `quote organic ${quoteOrganic ?? "unknown"} below minQuoteOrganic ${s.minQuoteOrganic}`); return false;
         }
       }
       const ageHours = getAgeHours(p);
-      if (s.minTokenAgeHours != null && (ageHours == null || ageHours < s.minTokenAgeHours)) {
-        pushFilteredReason(filteredOut, p, `token age ${ageHours ?? "unknown"}h below minTokenAgeHours ${s.minTokenAgeHours}`); return false;
+      // Only reject if age is KNOWN and too young — unknown age passes (API doesn't always return created_at)
+      if (s.minTokenAgeHours != null && ageHours != null && ageHours < s.minTokenAgeHours) {
+        pushFilteredReason(filteredOut, p, `token age ${ageHours.toFixed(1)}h below minTokenAgeHours ${s.minTokenAgeHours}`); return false;
       }
       if (s.maxTokenAgeHours != null && ageHours != null && ageHours > s.maxTokenAgeHours) {
         pushFilteredReason(filteredOut, p, `token age ${ageHours}h above maxTokenAgeHours ${s.maxTokenAgeHours}`); return false;
@@ -866,6 +868,7 @@ function condensePool(p) {
     quote: {
       symbol: p.token_y?.symbol,
       mint: p.token_y?.address,
+      organic: Math.round(p.token_y?.organic_score || 0),
     },
     pool_type: p.pool_type,
     bin_step: p.dlmm_params?.bin_step || null,
@@ -886,7 +889,7 @@ function condensePool(p) {
     mcap: round(p.token_x?.market_cap),
     organic_score: Math.round(p.token_x?.organic_score || 0),
     token_age_hours: p.token_x?.created_at
-      ? Math.floor((Date.now() - p.token_x.created_at) / 3_600_000)
+      ? Math.floor((Date.now() - Number(p.token_x.created_at) * 1000) / 3_600_000)
       : null,
     dev: p.token_x?.dev || null,
     launchpad: getPoolLaunchpad(p),
