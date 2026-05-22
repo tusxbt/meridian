@@ -114,7 +114,11 @@ function getRawPoolScreeningRejectReason(pool, s) {
   const baseOrganic = numeric(base?.organic_score);
   const quoteOrganic = numeric(quote?.organic_score);
   const launchpad = getPoolLaunchpad(pool);
-  const createdAt = numeric(base?.created_at);
+  // created_at from Meteora API is in seconds; from Jupiter enrichment (enrichDiscordSignalLaunchpads) it's in ms
+  const rawCreatedAt = numeric(base?.created_at);
+  const createdAtMs = rawCreatedAt == null ? null
+    : rawCreatedAt > 1e12 ? rawCreatedAt           // already ms (Jupiter enrichment via Date.parse)
+    : rawCreatedAt * 1000;                          // seconds → ms (Meteora native)
   const fee = numeric(pool?.fee);
   const quoteMint = quote?.address;
 
@@ -163,14 +167,14 @@ function getRawPoolScreeningRejectReason(pool, s) {
   if (includesCaseInsensitive(s.blockedLaunchpads, launchpad)) {
     return `blocked launchpad (${launchpad})`;
   }
-  if (s.minTokenAgeHours != null && createdAt != null) {
+  if (s.minTokenAgeHours != null && createdAtMs != null) {
     // Only reject if age is KNOWN and too young — API doesn't always return created_at
-    const maxCreatedAt = Date.now() - s.minTokenAgeHours * 3_600_000;
-    if (createdAt > maxCreatedAt) return `token age below minTokenAgeHours ${s.minTokenAgeHours}`;
+    const maxCreatedAtMs = Date.now() - s.minTokenAgeHours * 3_600_000;
+    if (createdAtMs > maxCreatedAtMs) return `token age below minTokenAgeHours ${s.minTokenAgeHours}`;
   }
-  if (s.maxTokenAgeHours != null && createdAt != null) {
-    const minCreatedAt = Date.now() - s.maxTokenAgeHours * 3_600_000;
-    if (createdAt < minCreatedAt) return `token age above maxTokenAgeHours ${s.maxTokenAgeHours}`;
+  if (s.maxTokenAgeHours != null && createdAtMs != null) {
+    const minCreatedAtMs = Date.now() - s.maxTokenAgeHours * 3_600_000;
+    if (createdAtMs < minCreatedAtMs) return `token age above maxTokenAgeHours ${s.maxTokenAgeHours}`;
   }
   if (fee != null && fee > 0 && (volume == null || volume === 0)) {
     return "fee income without swap volume — likely farming rewards, not real trading fees";
@@ -400,8 +404,9 @@ export async function discoverPools({
     `fee_active_tvl_ratio>=${s.minFeeActiveTvlRatio}`,
     `base_token_organic_score>=${s.minOrganic}`,
     `quote_token_organic_score>=${s.minQuoteOrganic}`,
-    s.minTokenAgeHours != null ? `base_token_created_at<=${Date.now() - s.minTokenAgeHours * 3_600_000}` : null,
-    s.maxTokenAgeHours != null ? `base_token_created_at>=${Date.now() - s.maxTokenAgeHours * 3_600_000}` : null,
+    // Meteora Pool Discovery API stores created_at in SECONDS — send threshold in seconds
+    s.minTokenAgeHours != null ? `base_token_created_at<=${Math.floor((Date.now() - s.minTokenAgeHours * 3_600_000) / 1000)}` : null,
+    s.maxTokenAgeHours != null ? `base_token_created_at>=${Math.floor((Date.now() - s.maxTokenAgeHours * 3_600_000) / 1000)}` : null,
     Array.isArray(s.allowedLaunchpads) && s.allowedLaunchpads.length > 0
       ? `base_token_launchpad=[${s.allowedLaunchpads.join(",")}]`
       : null,
@@ -582,9 +587,11 @@ export async function getTopCandidates({ limit = 10 } = {}) {
   const getBinStep  = (p) => Number(p.bin_step ?? p.dlmm_params?.bin_step ?? NaN);
   const getAgeHours = (p) => {
     if (p.token_age_hours != null) return Number(p.token_age_hours);
-    // condensed pools have token_age_hours; raw pools may have token_x.created_at (seconds epoch)
-    if (p.token_x?.created_at) return (Date.now() - Number(p.token_x.created_at) * 1000) / 3_600_000;
-    return null;
+    // Fallback for non-condensed pools: created_at may be seconds (Meteora) or ms (Jupiter enrichment)
+    const raw = p.token_x?.created_at;
+    if (raw == null) return null;
+    const ms = Number(raw) > 1e12 ? Number(raw) : Number(raw) * 1000;
+    return (Date.now() - ms) / 3_600_000;
   };
   const getOrganic  = (p) => p.base?.organic ?? p.token_x?.organic_score ?? null; // condensed: base.organic; raw: token_x.organic_score
   const getLaunchpad = (p) => p.launchpad ?? getPoolLaunchpad(p);
@@ -888,9 +895,13 @@ function condensePool(p) {
     holders: p.base_token_holders,
     mcap: round(p.token_x?.market_cap),
     organic_score: Math.round(p.token_x?.organic_score || 0),
-    token_age_hours: p.token_x?.created_at
-      ? Math.floor((Date.now() - Number(p.token_x.created_at) * 1000) / 3_600_000)
-      : null,
+    token_age_hours: (() => {
+      const raw = p.token_x?.created_at;
+      if (raw == null) return null;
+      // created_at from Meteora API is seconds; from Jupiter enrichment (enrichDiscordSignalLaunchpads) it's ms
+      const ms = Number(raw) > 1e12 ? Number(raw) : Number(raw) * 1000;
+      return Math.floor((Date.now() - ms) / 3_600_000);
+    })(),
     dev: p.token_x?.dev || null,
     launchpad: getPoolLaunchpad(p),
 
