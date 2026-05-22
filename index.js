@@ -1025,6 +1025,15 @@ function getDeterministicCloseRule(position, managementConfig) {
   if (isOORDown && minsOOR >= (managementConfig.outOfRangeDownWaitMinutes ?? 30)) {
     return { action: "CLOSE", rule: 4, reason: "OOR downside" };
   }
+  // Fallback: bin data unavailable (active_bin/upper_bin/lower_bin null) but position is
+  // confirmed OOR from portfolio API and has exceeded the shorter wait threshold.
+  if (!isOORUp && !isOORDown && !position.in_range && minsOOR > 0) {
+    const downWait = managementConfig.outOfRangeDownWaitMinutes ?? managementConfig.outOfRangeWaitMinutes;
+    const fallbackThreshold = Math.min(managementConfig.outOfRangeWaitMinutes, downWait);
+    if (minsOOR >= fallbackThreshold) {
+      return { action: "CLOSE", rule: 4, reason: `OOR ${minsOOR}m (bin data unavailable, direction unknown)` };
+    }
+  }
   if (
     position.fee_per_tvl_24h != null &&
     position.fee_per_tvl_24h < managementConfig.minFeePerTvl24h &&

@@ -1280,6 +1280,9 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
         const tracked = getTrackedPosition(positionAddress);
         const isOOR = pool.outOfRange || pool.positionsOutOfRange?.includes(positionAddress);
 
+        // Resolve binData for THIS pool — binDataByPool is keyed by poolAddress
+        const binData = binDataByPool[pool.poolAddress] ?? null;
+
         // Compute bin positions first so we can derive OOR from ground-truth bin data.
         // IMPORTANT: activeBin from tracked.bin_range.active is the deploy-time active bin,
         // NOT the current active bin — using it for OOR math would always return false
