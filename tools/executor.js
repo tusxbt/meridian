@@ -705,9 +705,43 @@ export async function executeTool(name, args) {
               result.auto_swapped = true;
               result.auto_swap_note = `Base token already auto-swapped back to SOL (${token.symbol || result.base_mint.slice(0, 8)} → SOL). Do NOT call swap_token again.`;
               if (swapResult?.amount_out) result.sol_received = swapResult.amount_out;
+              // Notify Telegram about the auto-swap
+              if (swapResult?.tx) {
+                notifySwap({
+                  inputSymbol: token.symbol || result.base_mint.slice(0, 8),
+                  outputSymbol: "SOL",
+                  amountIn: token.balance,
+                  amountOut: swapResult.amount_out,
+                  tx: swapResult.tx,
+                }).catch(() => {});
+              }
             } else if (!token || !hasBalance) {
-              log("executor", `Auto-swap skipped: base token ${result.base_mint.slice(0, 8)} not found in wallet (relay may have already converted it)`);
-              result.auto_swap_note = `Base token not found in wallet after close — relay may have already converted it to SOL. Verify wallet balance before calling swap_token.`;
+              if (balances.source === "rpc_fallback") {
+                // Helius unavailable — RPC fallback returns SOL only, no SPL tokens.
+                // Attempt the swap anyway; swapToken will fail gracefully if balance is truly 0.
+                log("executor", `Auto-swap: Helius unavailable (RPC fallback), attempting swap for ${result.base_mint.slice(0, 8)} without balance confirmation`);
+                try {
+                  const swapResult = await swapToken({ input_mint: result.base_mint, output_mint: "SOL" });
+                  result.auto_swapped = true;
+                  result.auto_swap_note = `Base token auto-swapped back to SOL (Helius unavailable — swapped without balance pre-check). Do NOT call swap_token again.`;
+                  if (swapResult?.amount_out) result.sol_received = swapResult.amount_out;
+                  if (swapResult?.tx) {
+                    notifySwap({
+                      inputSymbol: result.base_mint.slice(0, 8),
+                      outputSymbol: "SOL",
+                      amountIn: null,
+                      amountOut: swapResult.amount_out,
+                      tx: swapResult.tx,
+                    }).catch(() => {});
+                  }
+                } catch (swapErr) {
+                  log("executor_warn", `Auto-swap (RPC fallback path) failed: ${swapErr.message}`);
+                  result.auto_swap_note = `Auto-swap attempted without balance check (Helius unavailable) but failed: ${swapErr.message}. Call swap_token manually if needed.`;
+                }
+              } else {
+                log("executor", `Auto-swap skipped: base token ${result.base_mint.slice(0, 8)} not found in wallet (relay may have already converted it)`);
+                result.auto_swap_note = `Base token not found in wallet after close — relay may have already converted it to SOL. Verify wallet balance before calling swap_token.`;
+              }
             } else {
               log("executor", `Auto-swap skipped: base token ${token.symbol || result.base_mint.slice(0, 8)} value $${usd.toFixed(2)} is below $0.10 dust threshold`);
               result.auto_swap_note = `Base token value $${usd.toFixed(2)} is below $0.10 dust threshold — swap skipped.`;
