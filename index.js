@@ -977,6 +977,32 @@ function getDeterministicCloseRule(position, managementConfig) {
   ) {
     return { action: "CLOSE", rule: 5, reason: "low yield" };
   }
+  // Rule 6: Volume collapse — fee/TVL dropped sharply from peak (volume is dying)
+  const collapseMinAge = managementConfig.collapseCheckMinAge ?? 30;
+  if (
+    managementConfig.volumeCollapseDropPct != null &&
+    tracked?.peak_fee_per_tvl_24h != null &&
+    position.fee_per_tvl_24h != null &&
+    (position.age_minutes ?? 0) >= collapseMinAge
+  ) {
+    const drop = ((tracked.peak_fee_per_tvl_24h - position.fee_per_tvl_24h) / tracked.peak_fee_per_tvl_24h) * 100;
+    if (drop >= managementConfig.volumeCollapseDropPct) {
+      return { action: "CLOSE", rule: 6, reason: `volume collapse: fee/TVL dropped ${drop.toFixed(0)}% from peak ${tracked.peak_fee_per_tvl_24h.toFixed(2)}%` };
+    }
+  }
+  // Rule 7: TVL collapse — position value dropped sharply from peak (in-range only to avoid IL false positives)
+  if (
+    managementConfig.tvlCollapseDropPct != null &&
+    tracked?.peak_total_value_usd != null &&
+    position.total_value_usd != null &&
+    position.in_range &&
+    (position.age_minutes ?? 0) >= collapseMinAge
+  ) {
+    const drop = ((tracked.peak_total_value_usd - position.total_value_usd) / tracked.peak_total_value_usd) * 100;
+    if (drop >= managementConfig.tvlCollapseDropPct) {
+      return { action: "CLOSE", rule: 7, reason: `TVL collapse: position value dropped ${drop.toFixed(0)}% from peak $${tracked.peak_total_value_usd.toFixed(2)}` };
+    }
+  }
   return null;
 }
 
