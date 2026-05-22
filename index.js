@@ -8,7 +8,6 @@ import { log } from "./logger.js";
 import { getMyPositions, closePosition, getActiveBin } from "./tools/dlmm.js";
 import { getWalletBalances } from "./tools/wallet.js";
 import { getTopCandidates } from "./tools/screening.js";
-import { formatGmgnCandidateForPrompt } from "./tools/gmgn.js";
 import { config, reloadScreeningThresholds, computeDeployAmount } from "./config.js";
 import { evolveThresholds, getPerformanceSummary } from "./lessons.js";
 import { executeTool, registerCronRestarter, setPendingCloseReason } from "./tools/executor.js";
@@ -23,7 +22,6 @@ import {
   answerCallbackQuery,
   notifyOutOfRange,
   notifyClose,
-  notifyNoDeploy,
   isEnabled as telegramEnabled,
   createLiveMessage,
 } from "./telegram.js";
@@ -34,7 +32,6 @@ import { recordPositionSnapshot, recallForPool, addPoolNote } from "./pool-memor
 import { checkSmartWalletsOnPool } from "./smart-wallets.js";
 import { getTokenNarrative, getTokenInfo } from "./tools/token.js";
 import { stageSignals } from "./signal-tracker.js";
-import { getWeightsSummary } from "./signal-weights.js";
 import { bootstrapHiveMind, ensureAgentId, getHiveMindPullMode, isHiveMindEnabled, pullHiveMindLessons, pullHiveMindPresets, registerHiveMindAgent, startHiveMindBackgroundSync } from "./hivemind.js";
 import { appendDecision } from "./decision-log.js";
 import { writeDashboardState as _writeDashboardState } from "./dashboard-state-writer.js";
@@ -642,8 +639,6 @@ export async function runScreeningCycle({ silent = false } = {}) {
 
       return block;
     });
-
-    const weightsSummary = config.darwin?.enabled ? getWeightsSummary() : null;
 
     let deployAttempted = false;
     let deploySucceeded = false;
