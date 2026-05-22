@@ -89,10 +89,15 @@ export async function recordPerformance(perf) {
     return;
   }
 
-  const pnl_usd = (perf.final_value_usd + perf.fees_earned_usd) - perf.initial_value_usd;
-  const pnl_pct = perf.initial_value_usd > 0
-    ? (pnl_usd / perf.initial_value_usd) * 100
-    : 0;
+  // Prefer caller-provided pnl_usd (e.g. from Meteora API) — only compute it ourselves
+  // as a fallback. Computing (final + fees - initial) double-counts fees when the caller's
+  // `final_value_usd` already includes withdrawn fees (e.g. allTimeWithdrawals.total.usd).
+  const pnl_usd = Number.isFinite(perf.pnl_usd)
+    ? Number(perf.pnl_usd)
+    : (Number(perf.final_value_usd || 0) + Number(perf.fees_earned_usd || 0)) - Number(perf.initial_value_usd || 0);
+  const pnl_pct = Number.isFinite(perf.pnl_pct) && perf.pnl_pct !== 0
+    ? Number(perf.pnl_pct)
+    : (perf.initial_value_usd > 0 ? (pnl_usd / perf.initial_value_usd) * 100 : 0);
   const range_efficiency = perf.minutes_held > 0
     ? (perf.minutes_in_range / perf.minutes_held) * 100
     : 0;

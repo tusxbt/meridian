@@ -374,8 +374,12 @@ async function enrichPvpRisk(pools) {
  */
 export async function discoverPools({
   page_size = 50,
+  timeframe,
+  category,
 } = {}) {
   const s = config.screening;
+  const effectiveTimeframe = timeframe || s.timeframe;
+  const effectiveCategory  = category  || s.category;
   const filters = [
     "base_token_has_critical_warnings=false",
     "quote_token_has_critical_warnings=false",
@@ -385,7 +389,7 @@ export async function discoverPools({
     `base_token_market_cap>=${s.minMcap}`,
     `base_token_market_cap<=${s.maxMcap}`,
     `base_token_holders>=${s.minHolders}`,
-    `volume>=${Math.max(s.minVolume, getHardVolumeFloor(s.timeframe))}`,
+    `volume>=${Math.max(s.minVolume, getHardVolumeFloor(effectiveTimeframe))}`,
     `tvl>=${Math.max(s.minTvl, HARD_MIN_TVL)}`,
     s.maxTvl != null ? `tvl<=${s.maxTvl}` : null,
     `dlmm_bin_step>=${s.minBinStep}`,
@@ -403,8 +407,8 @@ export async function discoverPools({
   const data = await fetchPoolDiscoveryPage({
     page_size,
     filters,
-    timeframe: s.timeframe,
-    category: s.category,
+    timeframe: effectiveTimeframe,
+    category: effectiveCategory,
   });
 
   let rawPools = Array.isArray(data.data) ? data.data : [];

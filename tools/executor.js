@@ -445,8 +445,11 @@ const toolMap = {
       gmgnIndicatorFilter: ["gmgn", "indicatorFilter"],
       gmgnIndicatorInterval: ["gmgn", "indicatorInterval"],
       gmgnRequireBullishSt: ["gmgn", "indicatorRules", "requireBullishSupertrend"],
+      gmgnRequireBullishSupertrend: ["gmgn", "indicatorRules", "requireBullishSupertrend"],
       gmgnRejectAtBottom: ["gmgn", "indicatorRules", "rejectAlreadyAtBottom"],
+      gmgnRejectAlreadyAtBottom: ["gmgn", "indicatorRules", "rejectAlreadyAtBottom"],
       gmgnRequireAboveSt: ["gmgn", "indicatorRules", "requireAboveSupertrend"],
+      gmgnRequireAboveSupertrend: ["gmgn", "indicatorRules", "requireAboveSupertrend"],
       gmgnMinRsi: ["gmgn", "indicatorRules", "minRsi"],
       gmgnMaxRsi: ["gmgn", "indicatorRules", "maxRsi"],
       gmgnRequireBbPosition: ["gmgn", "indicatorRules", "requireBbPosition"],
@@ -679,7 +682,7 @@ export async function executeTool(name, args) {
         _pendingCloseReasons.delete(args.position_address);
         notifyClose({ pair: result.pool_name || args.position_address?.slice(0, 8), pnlUsd: result.pnl_usd ?? 0, pnlPct: result.pnl_pct ?? 0, reason: closeReason }).catch(() => {});
         // Note low-yield closes in pool memory so screener avoids redeploying
-        if (args.reason && args.reason.toLowerCase().includes("yield")) {
+        if (closeReason && String(closeReason).toLowerCase().includes("yield")) {
           const poolAddr = result.pool || args.pool_address;
           if (poolAddr) addPoolNote({ pool_address: poolAddr, note: `Closed: low yield (fee/TVL below threshold) at ${new Date().toISOString().slice(0,10)}` }).catch?.(() => {});
         }
@@ -901,8 +904,32 @@ async function runSafetyChecks(name, args) {
     }
 
     case "swap_token": {
-      // Basic check — prevent swapping when DRY_RUN is true
-      // (handled inside swapToken itself, but belt-and-suspenders)
+      const inputMint = args.input_mint;
+      const outputMint = args.output_mint;
+      const amount = Number(args.amount);
+      if (!inputMint || !outputMint) {
+        return { pass: false, reason: "swap_token requires both input_mint and output_mint." };
+      }
+      if (inputMint === outputMint) {
+        return { pass: false, reason: "swap_token input_mint and output_mint must be different." };
+      }
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return { pass: false, reason: `swap_token amount must be a positive number (got ${args.amount}).` };
+      }
+      return { pass: true };
+    }
+
+    case "close_position": {
+      if (!args.position_address || typeof args.position_address !== "string") {
+        return { pass: false, reason: "close_position requires a valid position_address (string)." };
+      }
+      return { pass: true };
+    }
+
+    case "claim_fees": {
+      if (!args.position_address || typeof args.position_address !== "string") {
+        return { pass: false, reason: "claim_fees requires a valid position_address (string)." };
+      }
       return { pass: true };
     }
 

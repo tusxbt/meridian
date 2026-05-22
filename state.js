@@ -14,6 +14,7 @@ import { log } from "./logger.js";
 const STATE_FILE = "./state.json";
 
 const MAX_RECENT_EVENTS = 20;
+const MAX_CLOSED_POSITIONS = 50; // cap state.json growth; older closed positions live in lessons/pool-memory
 const MAX_INSTRUCTION_LENGTH = 280;
 
 function sanitizeStoredText(text, maxLen = MAX_INSTRUCTION_LENGTH) {
@@ -39,12 +40,35 @@ function load() {
   }
 }
 
+function pruneClosedPositions(state) {
+  const closed = Object.entries(state.positions)
+    .filter(([_, p]) => p.closed)
+    .sort((a, b) => new Date(b[1].closed_at || 0) - new Date(a[1].closed_at || 0));
+  if (closed.length <= MAX_CLOSED_POSITIONS) return;
+  const toDrop = closed.slice(MAX_CLOSED_POSITIONS);
+  for (const [addr] of toDrop) delete state.positions[addr];
+  log("state", `Pruned ${toDrop.length} old closed position(s) — kept last ${MAX_CLOSED_POSITIONS}`);
+}
+
 function save(state) {
   try {
+    pruneClosedPositions(state);
     state.lastUpdated = new Date().toISOString();
     fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   } catch (err) {
     log("state_error", `Failed to write state.json: ${err.message}`);
+  }
+}
+
+/**
+ * Permanently remove a position from the registry (rare — normally recordClose is enough).
+ */
+export function untrackPosition(position_address) {
+  const state = load();
+  if (state.positions[position_address]) {
+    delete state.positions[position_address];
+    save(state);
+    log("state", `Untracked position ${position_address}`);
   }
 }
 
@@ -534,6 +558,7 @@ export function syncOpenPositions(active_addresses) {
   const state = load();
   const activeSet = new Set(active_addresses);
   let changed = false;
+  const autoClosed = [];
 
   for (const posId in state.positions) {
     const pos = state.positions[posId];
@@ -550,8 +575,10 @@ export function syncOpenPositions(active_addresses) {
     pos.closed_at = new Date().toISOString();
     pos.notes.push(`Auto-closed during state sync (not found on-chain)`);
     changed = true;
+    autoClosed.push({ position_address: posId, snapshot: { ...pos } });
     log("state", `Position ${posId} auto-closed (missing from on-chain data)`);
   }
 
   if (changed) save(state);
+  return autoClosed; // caller may record performance for these
 }
