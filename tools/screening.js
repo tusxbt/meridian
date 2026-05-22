@@ -850,21 +850,11 @@ export async function getTopCandidates({ limit = 10 } = {}) {
     for (const pool of eligible) {
       const confirmation = confirmationByPool.get(pool.pool);
       pool.indicator_confirmation = confirmation || null;
-    }
-    // Exclude pools where indicator explicitly fails — confirmed=false AND skipped=false
-    // skipped=true means data unavailable (API error) → pass through as neutral
-    const beforeIndicators = eligible.length;
-    eligible.splice(0, eligible.length, ...eligible.filter((pool) => {
-      const confirmation = pool.indicator_confirmation;
-      if (confirmation && !confirmation.confirmed && !confirmation.skipped) {
-        log("screening", `Indicator excluded ${pool.name} (${pool.pool.slice(0, 8)}): ${confirmation.reason}`);
-        pushFilteredReason(filteredOut, pool, `indicator not confirmed: ${confirmation.reason}`);
-        return false;
+      // Log as info only — indicator is a signal boost, not a hard filter
+      if (confirmation && !confirmation.skipped) {
+        const status = confirmation.confirmed ? "✅ confirmed" : "⚠️ not confirmed";
+        log("screening", `Indicator ${status} for ${pool.name}: ${confirmation.reason}`);
       }
-      return true;
-    }));
-    if (eligible.length < beforeIndicators) {
-      log("screening", `Indicator filter removed ${beforeIndicators - eligible.length} pool(s)`);
     }
   }
 

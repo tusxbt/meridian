@@ -617,6 +617,13 @@ export async function runScreeningCycle({ silent = false } = {}) {
         `  smart_wallets: ${sw?.in_pool?.length ?? 0} present${sw?.in_pool?.length ? ` → CONFIDENCE BOOST (${sw.in_pool.map(w => w.name).join(", ")})` : ""}`,
         activeBin != null ? `  active_bin: ${activeBin}` : null,
         priceChange != null ? `  1h: price${priceChange >= 0 ? "+" : ""}${priceChange}%, net_buyers=${netBuyers ?? "?"}` : null,
+        (() => {
+          const ic = pool.indicator_confirmation;
+          if (!ic || ic.skipped) return null;
+          return ic.confirmed
+            ? `  indicators: ✅ confirmed (${ic.reason})`
+            : `  indicators: ⚠️ not confirmed (${ic.reason}) — weigh carefully`;
+        })(),
         n?.narrative ? `  narrative_untrusted: ${sanitizeUntrustedPromptText(n.narrative, 500)}` : `  narrative_untrusted: none`,
         mem ? `  memory_untrusted: ${sanitizeUntrustedPromptText(mem, 500)}` : null,
       ].filter(Boolean).join("\n");
