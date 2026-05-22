@@ -609,7 +609,7 @@ export async function getTopCandidates({ limit = 10 } = {}) {
   const getVolume   = (p) => Number(p.volume ?? p.volume_window ?? NaN); // condensed: volume_window; raw: volume
   const isGmgn = (p) => p.gmgn === true;
 
-  const eligible = pools
+  const filteredPools = pools
     .filter((p) => {
       const tvl = Number(p.tvl ?? p.active_tvl ?? 0);
       if (Number.isFinite(minTvl) && minTvl > 0 && tvl < minTvl) {
@@ -694,16 +694,19 @@ export async function getTopCandidates({ limit = 10 } = {}) {
         return false;
       }
       return true;
-    })
+    });
+
+  // Log JS filter count using pre-slice number so "dropped" reflects actual rejects, not limit cut
+  if (filteredPools.length < pools.length) {
+    const uniqueReasons = [...new Set(filteredOut.map(f => f.reason))].slice(0, 6);
+    log("screening", `JS filter: ${pools.length} → ${filteredPools.length} eligible (dropped: ${pools.length - filteredPools.length}). Top reasons: ${uniqueReasons.join(" | ")}`);
+  } else {
+    log("screening", `JS filter: ${pools.length} → ${filteredPools.length} eligible`);
+  }
+
+  const eligible = filteredPools
     .sort((a, b) => scoreCandidate(b) - scoreCandidate(a))
     .slice(0, limit);
-
-  if (eligible.length < pools.length) {
-    const uniqueReasons = [...new Set(filteredOut.map(f => f.reason))].slice(0, 6);
-    log("screening", `JS filter: ${pools.length} → ${eligible.length} eligible (dropped: ${pools.length - eligible.length}). Top reasons: ${uniqueReasons.join(" | ")}`);
-  } else {
-    log("screening", `JS filter: ${pools.length} → ${eligible.length} eligible`);
-  }
 
   // Step 5: PVP check
   if (config.screening.avoidPvpSymbols && eligible.length > 0) {
