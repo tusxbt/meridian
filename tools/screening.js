@@ -394,6 +394,14 @@ export async function discoverPools({
   const s = config.screening;
   const effectiveTimeframe = timeframe || s.timeframe;
   const effectiveCategory  = category  || s.category;
+
+  // Server-side filter uses a relaxed fee/tvl and organic threshold to cast a wider net.
+  // JS filter (further down) applies the precise config values.
+  // This prevents the API from returning 0–3 pools when thresholds are tight.
+  const serverFeeRatio = s.serverMinFeeActiveTvlRatio ?? Math.min(s.minFeeActiveTvlRatio * 0.5, 0.02);
+  const serverOrganic  = s.serverMinOrganic  ?? Math.min(s.minOrganic  * 0.6, 40);
+  const serverQOrganic = s.serverMinQuoteOrganic ?? Math.min((s.minQuoteOrganic ?? s.minOrganic) * 0.6, 40);
+
   const filters = [
     "base_token_has_critical_warnings=false",
     "quote_token_has_critical_warnings=false",
@@ -408,9 +416,9 @@ export async function discoverPools({
     s.maxTvl != null ? `tvl<=${s.maxTvl}` : null,
     `dlmm_bin_step>=${s.minBinStep}`,
     `dlmm_bin_step<=${s.maxBinStep}`,
-    `fee_active_tvl_ratio>=${s.minFeeActiveTvlRatio}`,
-    `base_token_organic_score>=${s.minOrganic}`,
-    `quote_token_organic_score>=${s.minQuoteOrganic}`,
+    `fee_active_tvl_ratio>=${serverFeeRatio}`,
+    `base_token_organic_score>=${serverOrganic}`,
+    `quote_token_organic_score>=${serverQOrganic}`,
     // Meteora Pool Discovery API stores created_at in MILLISECONDS — send threshold in ms
     s.minTokenAgeHours != null ? `base_token_created_at<=${Date.now() - s.minTokenAgeHours * 3_600_000}` : null,
     s.maxTokenAgeHours != null ? `base_token_created_at>=${Date.now() - s.maxTokenAgeHours * 3_600_000}` : null,
