@@ -983,7 +983,7 @@ function getDeterministicCloseRule(position, managementConfig) {
   if (
     position.fee_per_tvl_24h != null &&
     position.fee_per_tvl_24h < managementConfig.minFeePerTvl24h &&
-    (position.age_minutes ?? 0) >= 60
+    (position.age_minutes ?? 0) >= (managementConfig.minAgeBeforeYieldCheck ?? 60)
   ) {
     return { action: "CLOSE", rule: 5, reason: "low yield" };
   }
@@ -1012,6 +1012,14 @@ function getDeterministicCloseRule(position, managementConfig) {
     if (drop >= managementConfig.tvlCollapseDropPct) {
       return { action: "CLOSE", rule: 7, reason: `TVL collapse: position value dropped ${drop.toFixed(0)}% from peak $${tracked.peak_total_value_usd.toFixed(2)}` };
     }
+  }
+  // Rule 8: Max hold time
+  if (
+    managementConfig.maxHoldMinutes != null &&
+    position.age_minutes != null &&
+    position.age_minutes >= managementConfig.maxHoldMinutes
+  ) {
+    return { action: "CLOSE", rule: 8, reason: "max hold time" };
   }
   return null;
 }
