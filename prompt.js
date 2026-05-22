@@ -126,7 +126,11 @@ HARD SKIP (only these exact signals justify not deploying):
 1. fees_sol < ${config.screening.minTokenFeesSol} — bundled/scam signal. No exceptions.
 2. wash_trading flag from OKX — no exceptions.
 3. rugpull flag from OKX AND no smart wallets present.
-4. pool_memory shows repeated losses on this exact pool address.
+4. pool_memory shows ALL of the following on this exact pool address:
+   - deploy_count >= 2 (at least two past deploys — one data point is not a pattern)
+   - avg_pnl_pct < -3% (meaningful loss, not noise or rounding)
+   - win_rate = 0% (zero wins across all deploys)
+   A single past loss — no matter the reason — is NOT grounds for skip. Pools can have bad timing once.
 
 EVERYTHING ELSE IS NOT A SKIP REASON. Specifically, these are NOT valid reasons to skip:
 - "generic narrative" or "no narrative" — irrelevant
@@ -136,6 +140,7 @@ EVERYTHING ELSE IS NOT A SKIP REASON. Specifically, these are NOT valid reasons 
 - "only one candidate" — deploy it
 - "volume feels thin" — if it passed the volume filter, it passed
 - "barely above threshold" — above threshold = pass
+- pool_memory has 1 past deploy with any PnL — single data point is NOT a pattern, deploy anyway
 
 SELECTION PRIORITY (when multiple candidates qualify, pick the best):
 1. Highest volume_window + rising volume_change_pct
