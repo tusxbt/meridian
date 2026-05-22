@@ -692,8 +692,19 @@ export async function executeTool(name, args) {
         if (result.base_mint) {
           try {
             const mint = result.base_mint;
-            const balances = await getWalletBalances({});
-            const token = balances.tokens?.find(t => t.mint === mint);
+
+            // Try Helius up to 3 times (2s apart) — balance update can lag behind tx confirmation
+            let balances, token;
+            for (let attempt = 0; attempt < 3; attempt++) {
+              if (attempt > 0) {
+                log("executor", `Auto-swap: Helius token not found, waiting 2s before retry (attempt ${attempt + 1}/3)...`);
+                await new Promise(r => setTimeout(r, 2000));
+              }
+              balances = await getWalletBalances({});
+              token = balances.tokens?.find(t => t.mint === mint);
+              if (token && Number(token.balance) > 0) break; // found — stop retrying
+            }
+
             const tokenSymbol = token?.symbol || mint.slice(0, 8);
             const tokenBalance = token ? Number(token.balance) : null;
             const usd = token?.usd != null ? Number(token.usd) : null;
