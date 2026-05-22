@@ -71,19 +71,24 @@ export async function getWalletBalances() {
   }
 
   try {
-    const url = `https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${HELIUS_KEY}`;
-    const res = await fetch(url);
-    
+    // Primary: Helius v1 wallet balances (includes USD pricing). Fallback: v0 if v1 returns 404.
+    const v1Url = `https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${HELIUS_KEY}`;
+    let res = await fetch(v1Url);
+    if (res.status === 404) {
+      log("wallet_warn", "Helius v1 returned 404 — falling back to v0/addresses/balances");
+      const v0Url = `https://api.helius.xyz/v0/addresses/${walletAddress}/balances?api-key=${HELIUS_KEY}`;
+      res = await fetch(v0Url);
+    }
     if (!res.ok) {
       throw new Error(`Helius API error: ${res.status} ${res.statusText}`);
     }
 
     const data = await res.json();
-    const balances = data.balances || [];
+    const balances = data.balances || data.tokens || [];
 
-    // ─── Find SOL and USDC ────────────────────────────────────
-    const solEntry = balances.find(b => b.mint === config.tokens.SOL || b.symbol === "SOL");
-    const usdcEntry = balances.find(b => b.mint === config.tokens.USDC || b.symbol === "USDC");
+    // ─── Find SOL and USDC by mint only (symbol fallback would match impersonators) ──
+    const solEntry  = balances.find(b => b.mint === config.tokens.SOL);
+    const usdcEntry = balances.find(b => b.mint === config.tokens.USDC);
 
     const solBalance = solEntry?.balance || 0;
     const solPrice = solEntry?.pricePerToken || 0;
@@ -142,10 +147,24 @@ export function normalizeMint(mint) {
   return mint;
 }
 
+// Convert a decimal `amount` to its raw smallest-unit string without floating-point
+// precision loss (Math.floor(amount * 10^d) breaks for amount * 10^d > 2^53).
+function toRawAmount(amount, decimals) {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return "0";
+  // Normalize scientific notation (1e-7) to fixed-point string
+  const s = n.toFixed(Math.max(decimals, 12));
+  const [intRaw, fracRaw = ""] = s.split(".");
+  const fracPadded = (fracRaw + "0".repeat(decimals)).slice(0, decimals);
+  const combined = (intRaw + fracPadded).replace(/^0+/, "") || "0";
+  return combined;
+}
+
 export async function swapToken({
   input_mint,
   output_mint,
   amount,
+  slippage_bps,
 }) {
   input_mint  = normalizeMint(input_mint);
   output_mint = normalizeMint(output_mint);
@@ -163,13 +182,16 @@ export async function swapToken({
     const wallet = getWallet();
     const connection = getConnection();
 
-    // ─── Convert to smallest unit ──────────────────────────────
+    // ─── Convert to smallest unit (BigInt-safe) ───────────────
     let decimals = 9; // SOL default
     if (input_mint !== config.tokens.SOL) {
       const mintInfo = await connection.getParsedAccountInfo(new PublicKey(input_mint));
       decimals = mintInfo.value?.data?.parsed?.info?.decimals ?? 9;
     }
-    const amountStr = Math.floor(amount * Math.pow(10, decimals)).toString();
+    const amountStr = toRawAmount(amount, decimals);
+    if (amountStr === "0") {
+      throw new Error(`swap amount converts to zero raw units (amount=${amount}, decimals=${decimals})`);
+    }
 
     // ─── Get Swap V2 order (unsigned tx + requestId) ───────────
     const search = new URLSearchParams({
@@ -178,6 +200,10 @@ export async function swapToken({
       amount: amountStr,
       taker: wallet.publicKey.toString(),
     });
+    const effectiveSlippageBps = Number(slippage_bps ?? config.jupiter?.slippageBps ?? 300);
+    if (Number.isFinite(effectiveSlippageBps) && effectiveSlippageBps > 0) {
+      search.set("slippageBps", String(Math.round(effectiveSlippageBps)));
+    }
     const referralParams = getJupiterReferralParams();
     if (referralParams) {
       search.set("referralAccount", referralParams.referralAccount);
@@ -237,8 +263,10 @@ export async function swapToken({
       tx: result.signature,
       input_mint,
       output_mint,
-      amount_in: result.inputAmountResult,
-      amount_out: result.outputAmountResult,
+      // Jupiter v2 response field names have varied — try multiple known shapes
+      amount_in:  result.inputAmountResult  ?? result.inputAmount  ?? order.inAmount  ?? null,
+      amount_out: result.outputAmountResult ?? result.outputAmount ?? order.outAmount ?? null,
+      slippage_bps: effectiveSlippageBps,
       referral_account: referralParams?.referralAccount || null,
       referral_fee_bps_requested: referralParams?.referralFee || 0,
       fee_bps_applied: order.feeBps ?? null,

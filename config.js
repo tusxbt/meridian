@@ -269,6 +269,7 @@ export const config = {
     referralFeeBps: Number(
       process.env.JUPITER_REFERRAL_FEE_BPS ?? 50,
     ),
+    slippageBps: Number(u.jupiterSlippageBps ?? process.env.JUPITER_SLIPPAGE_BPS ?? 300),
   },
 
   indicators: {

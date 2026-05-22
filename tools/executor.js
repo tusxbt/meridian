@@ -375,6 +375,8 @@ const toolMap = {
       collapseCheckMinAge:    ["management", "collapseCheckMinAge"],
       volumeCollapseDropPct:  ["management", "volumeCollapseDropPct"],
       tvlCollapseDropPct:     ["management", "tvlCollapseDropPct"],
+      // jupiter
+      jupiterSlippageBps: ["jupiter", "slippageBps"],
       // risk
       maxPositions: ["risk", "maxPositions"],
       maxDeployAmount: ["risk", "maxDeployAmount"],
