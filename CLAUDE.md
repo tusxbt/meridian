@@ -129,7 +129,7 @@ bins_below = round(minBinsBelow + (volatility / 5) * (maxBinsBelow - minBinsBelo
 clamped to [minBinsBelow, maxBinsBelow]
 ```
 
-- Volatility must be finite and > 0; zero/missing volatility is treated as an unusable feed
+- Volatility is optional — zero/missing volatility uses minBinsBelow as fallback
 - Low valid volatility → minBinsBelow
 - High volatility (5+) → maxBinsBelow
 - Any value in between is valid (continuous, not tiered)

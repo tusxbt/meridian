@@ -190,13 +190,7 @@ async function validateDeployPoolThresholds(args) {
     }
   }
 
-  const volatility = poolDetailVolatility(volatilityDetail);
-  if (volatility == null || volatility <= 0) {
-    return {
-      pass: false,
-      reason: `Pool ${volatilityTimeframe} volatility ${volatility ?? "unknown"} is unusable. Refusing deploy.`,
-    };
-  }
+  // volatility not required — deploy allowed even if feed is missing/zero
 
   const actualBinStep = poolDetailBinStep(detail);
   const minStep = numberOrNull(config.screening.minBinStep);
