@@ -1243,6 +1243,16 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
         for (const { position_address, snapshot } of autoClosed) {
           try { recordPerformance({ position_address, pnl_usd: null, source: "sync_auto_close", notes: snapshot.notes?.join("; ") }); } catch {}
         }
+        // Maintain local OOR timer even in relay mode — relay data has in_range field
+        for (const p of normalizedPositions) {
+          if (!p.position) continue;
+          if (p.in_range === false) markOutOfRange(p.position);
+          else if (p.in_range === true) markInRange(p.position);
+        }
+        // Overwrite minutes_out_of_range with local state timer (more accurate than relay value)
+        for (const p of normalizedPositions) {
+          if (p.position) p.minutes_out_of_range = minutesOutOfRange(p.position);
+        }
         _positionsCache = {
           wallet: walletAddress,
           total_positions: Number(result.total_positions || 0),
