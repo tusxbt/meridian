@@ -693,6 +693,12 @@ export async function executeTool(name, args) {
           try {
             const mint = result.base_mint;
 
+            // Relay zap-out with swap transactions already converted base token to SOL — skip Helius retry
+            if (result.relay_swapped) {
+              log("executor", `Auto-swap: relay zap-out already swapped base token to SOL — no action needed`);
+              result.auto_swap_note = `Base token already converted to SOL by relay zap-out. Do NOT call swap_token again.`;
+            } else {
+
             // Try Helius up to 3 times (2s apart) — balance update can lag behind tx confirmation
             let balances, token;
             for (let attempt = 0; attempt < 3; attempt++) {
@@ -760,6 +766,7 @@ export async function executeTool(name, args) {
                 result.auto_swap_note = `Auto-swap skipped: RPC balance query failed for ${tokenSymbol}. Call swap_token manually if needed.`;
               }
             }
+            } // end else (not relay_swapped)
           } catch (e) {
             log("executor_warn", `Auto-swap after close failed: ${e.message}`);
             result.auto_swap_failed = true;

@@ -1760,6 +1760,7 @@ export async function closePosition({ position_address, reason }) {
           return {
             success: true,
             relay: true,
+            relay_swapped: swapSigned.length > 0,
             request_id: order.requestId,
             position: position_address,
             pool: poolAddress,
@@ -1787,6 +1788,7 @@ export async function closePosition({ position_address, reason }) {
         return {
           success: true,
           relay: true,
+          relay_swapped: swapSigned.length > 0,
           request_id: order.requestId,
           position: position_address,
           pool: poolAddress,
