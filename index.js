@@ -459,7 +459,9 @@ export async function runScreeningCycle({ silent = false } = {}) {
     _screeningBusy = false;
     return screenReport;
   }
-  // liveMessage suppressed for auto cycles — deploy/close/OOR notify individually
+  if (!silent && telegramEnabled()) {
+    liveMessage = await createLiveMessage("🔍 Screening Cycle", "Scanning candidates...");
+  }
   timers.screeningLastRun = Date.now();
   log("cron", `Starting screening cycle [model: ${config.llm.screeningModel}]`);
   try {
@@ -472,18 +474,12 @@ export async function runScreeningCycle({ silent = false } = {}) {
     const activeStrategy = getActiveStrategy();
     const strategyBlock = activeStrategy
       ? `ACTIVE STRATEGY: ${activeStrategy.name} — LP: ${activeStrategy.lp_strategy} | bins_above: ${activeStrategy.range?.bins_above ?? 0} (FIXED — never change) | deposit: ${activeStrategy.entry?.single_side === "sol" ? "SOL only (amount_y, amount_x=0)" : "dual-sided"} | best for: ${activeStrategy.best_for}`
-      : `No active strategy — use strategy=${config.strategy.strategy}, bins_above=0, SOL only.`;
+      : `No active strategy — use default bid_ask, bins_above: 0, SOL only.`;
 
     // Fetch top candidates, then recon each sequentially with a small delay to avoid 429s
-    const topCandidates = await getTopCandidates({ limit: 10 }).catch((e) => ({ _error: e.message }));
-    if (topCandidates?._error) {
-      screenReport = `Screening failed: ${topCandidates._error}`;
-      return screenReport;
-    }
+    const topCandidates = await getTopCandidates({ limit: 10 }).catch(() => null);
     const candidates = (topCandidates?.candidates || topCandidates?.pools || []).slice(0, 10);
     const earlyFilteredExamples = topCandidates?.filtered_examples || [];
-    const gmgnStageCounts = topCandidates?.stage_counts ?? null;
-    const gmgnAllFiltered = topCandidates?.all_filtered ?? [];
 
     const allCandidates = [];
     for (const pool of candidates) {
@@ -504,10 +500,8 @@ export async function runScreeningCycle({ silent = false } = {}) {
     }
 
     // Hard filters after token recon — block launchpads and excessive Jupiter bot holders
-    // Skipped for GMGN: platforms already filtered upstream; bundler/bot data from GMGN pipeline
     const filteredOut = [];
     const passing = allCandidates.filter(({ pool, ti }) => {
-      if (pool.gmgn) return true;
       const launchpad = ti?.launchpad ?? null;
       if (launchpad && config.screening.allowedLaunchpads?.length > 0 && !config.screening.allowedLaunchpads.includes(launchpad)) {
         log("screening", `Skipping ${pool.name} — launchpad ${launchpad} not in allow-list`);
@@ -531,44 +525,26 @@ export async function runScreeningCycle({ silent = false } = {}) {
 
     if (passing.length === 0) {
       const combined = filteredOut.length > 0 ? filteredOut : earlyFilteredExamples;
-      const combinedExamples = combined.slice(0, 5)
+      const combinedExamples = combined.slice(0, 3)
         .map((entry) => `- ${entry.name}: ${entry.reason}`)
         .join("\n");
-      const funnelBlock = buildGmgnFunnelReport(gmgnStageCounts, gmgnAllFiltered, { fromStage: 2 });
-      const thresholds = [
-        `tvl $${config.screening.minTvl}–$${config.screening.maxTvl ?? "∞"}`,
-        `vol>$${config.screening.minVolume}`,
-        `organic>${config.screening.minOrganic}%`,
-        `holders>${config.screening.minHolders}`,
-        `fee/tvl>${config.screening.minFeeActiveTvlRatio}`,
-        `bin_step ${config.screening.minBinStep}–${config.screening.maxBinStep}`,
-        `mcap $${config.screening.minMcap}–$${config.screening.maxMcap ?? "∞"}`,
-      ].join(" | ");
-      screenReport = funnelBlock
-        ? `No candidates available.\n\n${funnelBlock}`
-        : combinedExamples
-          ? `No candidates available.\nFiltered examples:\n${combinedExamples}\n\nActive thresholds: ${thresholds}`
-          : `No candidates available — 0 pools passed server-side filter.\nActive thresholds: ${thresholds}`;
+      screenReport = combinedExamples
+        ? `No candidates available.\nFiltered examples:\n${combinedExamples}`
+        : `No candidates available (all filtered by launchpad / holder-quality rules).`;
       appendDecision({
         type: "no_deploy",
         actor: "SCREENER",
         summary: "No candidates available",
-        reason: funnelBlock || combinedExamples || "All candidates filtered before deploy",
+        reason: combinedExamples || "All candidates filtered before deploy",
         rejected: combined.slice(0, 5).map((entry) => `${entry.name}: ${entry.reason}`),
       });
       return screenReport;
-    }
-
-    if (passing.length <= 1 && gmgnStageCounts) {
-      const funnelBlock = buildGmgnFunnelReport(gmgnStageCounts, gmgnAllFiltered, { fromStage: 2 });
-      if (funnelBlock) log("screening", `GMGN funnel (sparse):\n${funnelBlock}`);
     }
 
     if (passing.length === 1) {
       const skipReason = getLoneCandidateSkipReason(passing[0]);
       if (skipReason) {
         const candidateName = passing[0].pool?.name || "unknown";
-        const funnelBlock = buildGmgnFunnelReport(gmgnStageCounts, gmgnAllFiltered, { fromStage: 2 });
         screenReport = [
           "⛔ NO DEPLOY",
           "",
@@ -582,8 +558,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
           "",
           "REJECTED",
           `- ${candidateName}: ${skipReason}`,
-          funnelBlock ? `\n─────────────\n${funnelBlock}` : null,
-        ].filter(Boolean).join("\n");
+        ].join("\n");
         appendDecision({
           type: "no_deploy",
           actor: "SCREENER",
@@ -633,41 +608,27 @@ export async function runScreeningCycle({ silent = false } = {}) {
       const pvpLine = pool.is_pvp
         ? `  pvp: HIGH — rival ${pool.pvp_rival_name || pool.pvp_symbol} (${pool.pvp_rival_mint?.slice(0, 8)}...) has pool ${pool.pvp_rival_pool?.slice(0, 8)}..., tvl=$${pool.pvp_rival_tvl}, holders=${pool.pvp_rival_holders}, fees=${pool.pvp_rival_fees}SOL`
         : null;
-      let block;
-      if (pool.gmgn) {
-        block = [
-          `POOL: ${pool.name} (${pool.pool})`,
-          formatGmgnCandidateForPrompt(pool),
-          pvpLine,
-          `  smart_wallets: ${sw?.in_pool?.length ?? 0} present${sw?.in_pool?.length ? ` → CONFIDENCE BOOST (${sw.in_pool.map(w => w.name).join(", ")})` : ""}`,
-          activeBin != null ? `  active_bin: ${activeBin}` : null,
-          n?.narrative ? `  narrative_untrusted: ${sanitizeUntrustedPromptText(n.narrative, 500)}` : `  narrative_untrusted: none`,
-          mem ? `  memory_untrusted: ${sanitizeUntrustedPromptText(mem, 500)}` : null,
-        ].filter(Boolean).join("\n");
-      } else {
-        const gmgnPriceLine = pool.gmgn_price_action
-          ? `  gmgn_price: rsi2=${pool.gmgn_price_action.rsi2 ?? "?"}, supertrend=${pool.gmgn_price_action.supertrend?.direction || "?"}, price_vs_ath=${pool.gmgn_price_action.priceVsAthPct ?? "?"}%, 1h_change=${pool.gmgn_price_action.priceChangePct ?? "?"}%, max_vol_candle=${pool.gmgn_price_action.maxVolumeShare ?? "?"}%`
-          : null;
-        block = [
-          `POOL: ${pool.name} (${pool.pool})`,
-          `  metrics: bin_step=${pool.bin_step}, fee_pct=${pool.fee_pct}%, fee_tvl=${pool.fee_active_tvl_ratio}, vol=$${pool.volume_window}, tvl=$${pool.tvl ?? pool.active_tvl}, volatility_${pool.volatility_timeframe || "30m"}=${pool.volatility}, mcap=$${pool.mcap}, organic=${pool.organic_score}${pool.token_age_hours != null ? `, age=${pool.token_age_hours}h` : ""}`,
-          `  audit: top10=${top10Pct}%, bots=${botPct}%, fees=${feesSol}SOL${launchpad ? `, launchpad=${launchpad}` : ""}`,
-          gmgnPriceLine,
-          pvpLine,
-          okxParts ? `  okx: ${okxParts}` : okxUnavailable ? `  okx: unavailable` : null,
-          okxTags  ? `  tags: ${okxTags}` : null,
-          pool.price_vs_ath_pct != null ? `  ath: price_vs_ath=${pool.price_vs_ath_pct}%${pool.top_cluster_trend ? `, top_cluster=${pool.top_cluster_trend}` : ""}` : null,
-          `  smart_wallets: ${sw?.in_pool?.length ?? 0} present${sw?.in_pool?.length ? ` → CONFIDENCE BOOST (${sw.in_pool.map(w => w.name).join(", ")})` : ""}`,
-          activeBin != null ? `  active_bin: ${activeBin}` : null,
-          priceChange != null ? `  1h: price${priceChange >= 0 ? "+" : ""}${priceChange}%, net_buyers=${netBuyers ?? "?"}` : null,
-          n?.narrative ? `  narrative_untrusted: ${sanitizeUntrustedPromptText(n.narrative, 500)}` : `  narrative_untrusted: none`,
-          mem ? `  memory_untrusted: ${sanitizeUntrustedPromptText(mem, 500)}` : null,
-        ].filter(Boolean).join("\n");
-      }
+
+      const block = [
+        `POOL: ${pool.name} (${pool.pool})`,
+        `  metrics: bin_step=${pool.bin_step}, fee_pct=${pool.fee_pct}%, fee_tvl=${pool.fee_active_tvl_ratio}, vol=$${pool.volume_window}, tvl=$${pool.tvl ?? pool.active_tvl}, volatility_${pool.volatility_timeframe || "30m"}=${pool.volatility}, mcap=$${pool.mcap}, organic=${pool.organic_score}${pool.token_age_hours != null ? `, age=${pool.token_age_hours}h` : ""}`,
+        `  audit: top10=${top10Pct}%, bots=${botPct}%, fees=${feesSol}SOL${launchpad ? `, launchpad=${launchpad}` : ""}`,
+        pvpLine,
+        okxParts ? `  okx: ${okxParts}` : okxUnavailable ? `  okx: unavailable` : null,
+        okxTags  ? `  tags: ${okxTags}` : null,
+        pool.price_vs_ath_pct != null ? `  ath: price_vs_ath=${pool.price_vs_ath_pct}%${pool.top_cluster_trend ? `, top_cluster=${pool.top_cluster_trend}` : ""}` : null,
+        `  smart_wallets: ${sw?.in_pool?.length ?? 0} present${sw?.in_pool?.length ? ` → CONFIDENCE BOOST (${sw.in_pool.map(w => w.name).join(", ")})` : ""}`,
+        activeBin != null ? `  active_bin: ${activeBin}` : null,
+        priceChange != null ? `  1h: price${priceChange >= 0 ? "+" : ""}${priceChange}%, net_buyers=${netBuyers ?? "?"}` : null,
+        n?.narrative ? `  narrative_untrusted: ${sanitizeUntrustedPromptText(n.narrative, 500)}` : `  narrative_untrusted: none`,
+        mem ? `  memory_untrusted: ${sanitizeUntrustedPromptText(mem, 500)}` : null,
+      ].filter(Boolean).join("\n");
 
       // Stage signals for Darwinian weighting — captured before LLM decides
       if (config.darwin?.enabled) {
+        const baseMint = pool.base?.mint || pool.base_mint || ti?.mint || null;
         stageSignals(pool.pool, {
+          base_mint:             baseMint,
           organic_score:         pool.organic_score         ?? null,
           fee_tvl_ratio:         pool.fee_active_tvl_ratio  ?? null,
           volume:                pool.volume_window         ?? null,
@@ -695,14 +656,13 @@ PRE-LOADED CANDIDATES (${passing.length} pools):
 ${candidateBlocks.join("\n\n")}
 
 STEPS:
-1. Evaluate each candidate using the pre-loaded data. Pick the best one based on fee/TVL, volume, organic score, and smart wallet presence.
-2. If you need to verify or research a specific candidate further, you may call check_smart_wallets_on_pool, get_token_holders, get_token_narrative, or get_active_bin.
-3. Deploy the best qualifying candidate with deploy_position.
-   strategy = ${config.strategy.strategy} (always use this, never change it).
-   bins_below = round(${config.strategy.minBinsBelow} + (candidate volatility/5)*${config.strategy.maxBinsBelow - config.strategy.minBinsBelow}) clamped to [${config.strategy.minBinsBelow},${config.strategy.maxBinsBelow}].
-   If candidate has no volatility or volatility=0, use bins_below = ${config.strategy.minBinsBelow}.
-   pass deploy_position.volatility = the candidate volatility value (pass 0 or omit if unknown).
-   bins_above = 0. Single-side SOL only: set amount_y, keep amount_x = 0.
+1. Decide if any candidate is actually worth deploying. One surviving candidate is not automatically good enough.
+2. Pick the best candidate based on narrative quality, smart wallets, and pool metrics.
+3. Call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
+   bins_below = round(${config.strategy.minBinsBelow} + (candidate volatility/5)*(${config.strategy.maxBinsBelow - config.strategy.minBinsBelow})) clamped to [${config.strategy.minBinsBelow},${config.strategy.maxBinsBelow}].
+   pass deploy_position.volatility = the candidate volatility value.
+   For single-side SOL deploys, do not invent upside:
+   set amount_y only, keep amount_x = 0, keep bins_above = 0, and let the upper bin stay at the active bin.
 4. Report in this exact format (no tables, no extra sections):
    🚀 DEPLOYED
 
@@ -771,8 +731,7 @@ IMPORTANT:
           await liveMessage?.toolFinish(name, result, success);
         },
       });
-    const funnelAppend = buildGmgnFunnelReport(gmgnStageCounts, gmgnAllFiltered, { fromStage: 2 });
-    screenReport = funnelAppend ? `${content}\n\n─────────────\n${funnelAppend}` : content;
+    screenReport = content;
     if (/⛔\s*NO DEPLOY/i.test(content)) {
       appendDecision({
         type: "no_deploy",
@@ -780,17 +739,6 @@ IMPORTANT:
         summary: "LLM chose no deploy",
         reason: stripThink(content).slice(0, 500),
       });
-      if (telegramEnabled()) {
-        const clean = stripThink(content);
-        const bestMatch = clean.match(/BEST LOOKING CANDIDATE\s*\n([^\n]+)/i);
-        const whyMatch = clean.match(/WHY SKIPPED\s*\n([\s\S]*?)(?:\n\n|\nREJECTED|$)/i);
-        const rejMatch = clean.match(/REJECTED\s*\n([\s\S]*?)$/i);
-        notifyNoDeploy({
-          bestCandidate: bestMatch?.[1]?.trim(),
-          whySkipped: whyMatch?.[1]?.trim(),
-          rejected: rejMatch?.[1]?.trim(),
-        }).catch(() => {});
-      }
     } else if (!deploySucceeded) {
       appendDecision({
         type: "no_deploy",
@@ -798,9 +746,6 @@ IMPORTANT:
         summary: deployAttempted ? "Deploy attempt did not succeed" : "No successful deploy in screening cycle",
         reason: stripThink(content).slice(0, 500),
       });
-      if (telegramEnabled() && !deployAttempted) {
-        notifyNoDeploy({ whySkipped: "No candidates passed screening filters." }).catch(() => {});
-      }
     }
   } catch (error) {
     log("cron_error", `Screening cycle failed: ${error.message}`);
@@ -810,7 +755,7 @@ IMPORTANT:
     if (!silent && telegramEnabled()) {
       if (screenReport) {
         if (liveMessage) await liveMessage.finalize(stripThink(screenReport)).catch(() => {});
-        // cycle report suppressed — only deploy notifications are sent
+        else sendMessage(`🔍 Screening Cycle\n\n${stripThink(screenReport)}`).catch(() => { });
       }
     }
   }
@@ -1022,64 +967,20 @@ function getDeterministicCloseRule(position, managementConfig) {
   ) {
     return { action: "CLOSE", rule: 3, reason: "pumped far above range" };
   }
-  // Rule 4: OOR wait — upside and downside use separate wait thresholds
-  const isOORUp   = position.active_bin != null && position.upper_bin != null && position.active_bin > position.upper_bin;
-  const isOORDown = position.active_bin != null && position.lower_bin != null && position.active_bin < position.lower_bin;
-  const minsOOR   = position.minutes_out_of_range ?? 0;
-  if (isOORUp && minsOOR >= managementConfig.outOfRangeWaitMinutes) {
-    return { action: "CLOSE", rule: 4, reason: "OOR upside" };
-  }
-  if (isOORDown && minsOOR >= (managementConfig.outOfRangeDownWaitMinutes ?? 30)) {
-    return { action: "CLOSE", rule: 4, reason: "OOR downside" };
-  }
-  // Fallback: bin data unavailable (active_bin/upper_bin/lower_bin null) but position is
-  // confirmed OOR from portfolio API and has exceeded the shorter wait threshold.
-  if (!isOORUp && !isOORDown && !position.in_range && minsOOR > 0) {
-    const downWait = managementConfig.outOfRangeDownWaitMinutes ?? managementConfig.outOfRangeWaitMinutes;
-    const fallbackThreshold = Math.min(managementConfig.outOfRangeWaitMinutes, downWait);
-    if (minsOOR >= fallbackThreshold) {
-      return { action: "CLOSE", rule: 4, reason: `OOR ${minsOOR}m (bin data unavailable, direction unknown)` };
-    }
+  if (
+    position.active_bin != null &&
+    position.upper_bin != null &&
+    position.active_bin > position.upper_bin &&
+    (position.minutes_out_of_range ?? 0) >= managementConfig.outOfRangeWaitMinutes
+  ) {
+    return { action: "CLOSE", rule: 4, reason: "OOR" };
   }
   if (
     position.fee_per_tvl_24h != null &&
     position.fee_per_tvl_24h < managementConfig.minFeePerTvl24h &&
-    (position.age_minutes ?? 0) >= (managementConfig.minAgeBeforeYieldCheck ?? 25)
+    (position.age_minutes ?? 0) >= 60
   ) {
     return { action: "CLOSE", rule: 5, reason: "low yield" };
-  }
-  if (
-    managementConfig.maxHoldMinutes != null &&
-    position.age_minutes != null &&
-    position.age_minutes >= managementConfig.maxHoldMinutes
-  ) {
-    return { action: "CLOSE", rule: 6, reason: "max hold time" };
-  }
-  // Rule 7: Volume collapse — fee/TVL dropped sharply from peak (volume is dying)
-  const collapseMinAge = managementConfig.collapseCheckMinAge ?? 30;
-  if (
-    managementConfig.volumeCollapseDropPct != null &&
-    tracked?.peak_fee_per_tvl_24h != null &&
-    position.fee_per_tvl_24h != null &&
-    (position.age_minutes ?? 0) >= collapseMinAge
-  ) {
-    const drop = ((tracked.peak_fee_per_tvl_24h - position.fee_per_tvl_24h) / tracked.peak_fee_per_tvl_24h) * 100;
-    if (drop >= managementConfig.volumeCollapseDropPct) {
-      return { action: "CLOSE", rule: 7, reason: `volume collapse: fee/TVL dropped ${drop.toFixed(0)}% from peak ${tracked.peak_fee_per_tvl_24h.toFixed(2)}%` };
-    }
-  }
-  // Rule 8: TVL collapse — position value dropped sharply from peak (in-range only to avoid IL false positives)
-  if (
-    managementConfig.tvlCollapseDropPct != null &&
-    tracked?.peak_total_value_usd != null &&
-    position.total_value_usd != null &&
-    position.in_range &&
-    (position.age_minutes ?? 0) >= collapseMinAge
-  ) {
-    const drop = ((tracked.peak_total_value_usd - position.total_value_usd) / tracked.peak_total_value_usd) * 100;
-    if (drop >= managementConfig.tvlCollapseDropPct) {
-      return { action: "CLOSE", rule: 8, reason: `TVL collapse: position value dropped ${drop.toFixed(0)}% from peak $${tracked.peak_total_value_usd.toFixed(2)}` };
-    }
   }
   return null;
 }
