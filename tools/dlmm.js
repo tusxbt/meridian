@@ -1280,8 +1280,10 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
         const tracked = getTrackedPosition(positionAddress);
         const isOOR = pool.outOfRange || pool.positionsOutOfRange?.includes(positionAddress);
 
-        // Resolve binData for THIS pool — binDataByPool is keyed by poolAddress
-        const binData = binDataByPool[pool.poolAddress] ?? null;
+        // Resolve binData for THIS specific position.
+        // fetchDlmmPnlForPool returns { [positionAddress]: positionData } — a MAP keyed by
+        // position address, not a single object. Must look up by positionAddress to get live data.
+        const binData = binDataByPool[pool.poolAddress]?.[positionAddress] ?? null;
 
         // Compute bin positions first so we can derive OOR from ground-truth bin data.
         // IMPORTANT: activeBin from tracked.bin_range.active is the deploy-time active bin,

@@ -166,6 +166,7 @@ export async function getWalletBalances() {
       usdc: Math.round(usdcBalance * 100) / 100,
       tokens: enrichedTokens,
       total_usd: Math.round(totalUsd * 100) / 100,
+      source: "helius",
     };
   } catch (error) {
     clearTimeout(timeoutId);
@@ -207,11 +208,12 @@ export async function getSplTokenBalance(mintAddress) {
     const wallet = getWallet();
     const mintPk = new PublicKey(mintAddress);
     const walletPk = wallet.publicKey;
-    // getTokenAccountsByOwner finds all SPL accounts for this mint owned by wallet
+    // getTokenAccountsByOwner finds all SPL accounts for this mint owned by wallet.
+    // Each entry is { pubkey: PublicKey, account: AccountInfo<Buffer> } — use pubkey directly.
     const accounts = await conn.getTokenAccountsByOwner(walletPk, { mint: mintPk });
     let total = 0;
-    for (const { account } of accounts.value) {
-      const info = await conn.getTokenAccountBalance(account.pubkey).catch(() => null);
+    for (const { pubkey } of accounts.value) {
+      const info = await conn.getTokenAccountBalance(pubkey).catch(() => null);
       if (info?.value?.uiAmount) total += info.value.uiAmount;
     }
     return total; // 0 if no accounts or all empty
