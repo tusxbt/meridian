@@ -140,6 +140,9 @@ function getRawPoolScreeningRejectReason(pool, s) {
   if (feeActiveTvlRatio == null || feeActiveTvlRatio < s.minFeeActiveTvlRatio) {
     return `fee/active-TVL ${feeActiveTvlRatio ?? "unknown"} below minFeeActiveTvlRatio ${s.minFeeActiveTvlRatio}`;
   }
+  if (s.maxFeeActiveTvlRatio != null && feeActiveTvlRatio > s.maxFeeActiveTvlRatio) {
+    return `fee/active-TVL ${feeActiveTvlRatio} above maxFeeActiveTvlRatio ${s.maxFeeActiveTvlRatio} (suspicious — possible wash trading)`;
+  }
   if (baseOrganic == null || baseOrganic < s.minOrganic) {
     return `base organic ${baseOrganic ?? "unknown"} below minOrganic ${s.minOrganic}`;
   }
@@ -563,6 +566,8 @@ export async function getTopCandidates({ limit = 10 } = {}) {
     : Number(config.screening.minTvl ?? 0);
   const maxTvl = config.screening.maxTvl == null ? null : Number(config.screening.maxTvl);
   const minFeeActiveTvlRatio = Number(config.screening.minFeeActiveTvlRatio ?? 0);
+  const maxFeeActiveTvlRatio = config.screening.maxFeeActiveTvlRatio != null
+    ? Number(config.screening.maxFeeActiveTvlRatio) : null;
 
   const eligible = pools
     .filter((p) => {
@@ -573,6 +578,11 @@ export async function getTopCandidates({ limit = 10 } = {}) {
       }
       if (Number.isFinite(maxTvl) && maxTvl > 0 && tvl > maxTvl) {
         pushFilteredReason(filteredOut, p, `TVL $${tvl} above maxTvl $${maxTvl}`);
+        return false;
+      }
+      const feeRatio = Number(p.fee_active_tvl_ratio ?? 0);
+      if (maxFeeActiveTvlRatio != null && feeRatio > maxFeeActiveTvlRatio) {
+        pushFilteredReason(filteredOut, p, `fee/TVL ${feeRatio} above maxFeeActiveTvlRatio ${maxFeeActiveTvlRatio}`);
         return false;
       }
       // volatility not required — skip rejection for missing/zero volatility
