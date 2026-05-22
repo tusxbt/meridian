@@ -695,10 +695,9 @@ PRE-LOADED CANDIDATES (${passing.length} pools):
 ${candidateBlocks.join("\n\n")}
 
 STEPS:
-1. Decide whether any candidate is worth deploying. A single remaining candidate is not automatically good enough.
-2. Pick the best candidate only if it has real conviction from narrative quality, smart wallets, and pool metrics. If the list has only one pool and it lacks narrative or smart-wallet confirmation, skip the cycle.
-3. If a pool qualifies, call deploy_position DIRECTLY — all enrichment data (active_bin, token info, smart wallets, narrative) is already embedded in the candidate blocks above.
-   DO NOT call get_active_bin, get_token_holders, get_token_narrative, get_token_info, or check_smart_wallets_on_pool — calling these wastes steps and is incorrect.
+1. Evaluate each candidate using the pre-loaded data. Pick the best one based on fee/TVL, volume, organic score, and smart wallet presence.
+2. If you need to verify or research a specific candidate further, you may call check_smart_wallets_on_pool, get_token_holders, get_token_narrative, or get_active_bin.
+3. Deploy the best qualifying candidate with deploy_position.
    strategy = ${config.strategy.strategy} (always use this, never change it).
    bins_below = round(${config.strategy.minBinsBelow} + (candidate volatility/5)*${config.strategy.maxBinsBelow - config.strategy.minBinsBelow}) clamped to [${config.strategy.minBinsBelow},${config.strategy.maxBinsBelow}].
    If candidate has no volatility or volatility=0, use bins_below = ${config.strategy.minBinsBelow}.
