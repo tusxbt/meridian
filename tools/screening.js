@@ -404,9 +404,9 @@ export async function discoverPools({
     `fee_active_tvl_ratio>=${s.minFeeActiveTvlRatio}`,
     `base_token_organic_score>=${s.minOrganic}`,
     `quote_token_organic_score>=${s.minQuoteOrganic}`,
-    // Meteora Pool Discovery API stores created_at in SECONDS — send threshold in seconds
-    s.minTokenAgeHours != null ? `base_token_created_at<=${Math.floor((Date.now() - s.minTokenAgeHours * 3_600_000) / 1000)}` : null,
-    s.maxTokenAgeHours != null ? `base_token_created_at>=${Math.floor((Date.now() - s.maxTokenAgeHours * 3_600_000) / 1000)}` : null,
+    // Meteora Pool Discovery API stores created_at in MILLISECONDS — send threshold in ms
+    s.minTokenAgeHours != null ? `base_token_created_at<=${Date.now() - s.minTokenAgeHours * 3_600_000}` : null,
+    s.maxTokenAgeHours != null ? `base_token_created_at>=${Date.now() - s.maxTokenAgeHours * 3_600_000}` : null,
     Array.isArray(s.allowedLaunchpads) && s.allowedLaunchpads.length > 0
       ? `base_token_launchpad=[${s.allowedLaunchpads.join(",")}]`
       : null,
