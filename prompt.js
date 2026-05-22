@@ -141,6 +141,13 @@ EVERYTHING ELSE IS NOT A SKIP REASON. Specifically, these are NOT valid reasons 
 - "volume feels thin" — if it passed the volume filter, it passed
 - "barely above threshold" — above threshold = pass
 - pool_memory has 1 past deploy with any PnL — single data point is NOT a pattern, deploy anyway
+- "indicator not confirmed" — indicators are OPTIONAL confidence boosters, NOT a skip reason. A pool with indicators not confirmed can still be deployed. Treat confirmed indicators as extra confidence, unconfirmed as neutral.
+
+INDICATOR SIGNAL RULES (entry):
+- indicators: ✅ confirmed → extra confidence boost, prefer this candidate when tiebreaking
+- indicators: not confirmed → NEUTRAL — still deploy if the pool otherwise qualifies
+- No indicator line shown → data unavailable, treat as neutral
+- NEVER skip a deploy solely because indicator is not confirmed.
 
 SELECTION PRIORITY (when multiple candidates qualify, pick the best):
 1. Highest volume_window + rising volume_change_pct

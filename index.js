@@ -622,7 +622,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
           if (!ic || ic.skipped) return null;
           return ic.confirmed
             ? `  indicators: ✅ confirmed (${ic.reason})`
-            : `  indicators: ⚠️ not confirmed (${ic.reason}) — weigh carefully`;
+            : `  indicators: not confirmed (${ic.reason}) [optional signal — not a skip reason]`;
         })(),
         n?.narrative ? `  narrative_untrusted: ${sanitizeUntrustedPromptText(n.narrative, 500)}` : `  narrative_untrusted: none`,
         mem ? `  memory_untrusted: ${sanitizeUntrustedPromptText(mem, 500)}` : null,
