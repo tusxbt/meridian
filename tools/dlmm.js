@@ -1280,24 +1280,22 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
         const tracked = getTrackedPosition(positionAddress);
         const isOOR = pool.outOfRange || pool.positionsOutOfRange?.includes(positionAddress);
 
-        // Bin data: from supplemental PnL call (OOR) or tracked state (in-range)
-        const binData = binDataByPool[pool.poolAddress]?.[positionAddress];
-        if (!binData) {
-          log("positions_warn", `PnL API missing data for ${positionAddress.slice(0, 8)} in pool ${pool.poolAddress.slice(0, 8)} — using portfolio only for open-position discovery`);
-        }
-
         // Compute bin positions first so we can derive OOR from ground-truth bin data.
+        // IMPORTANT: activeBin from tracked.bin_range.active is the deploy-time active bin,
+        // NOT the current active bin — using it for OOR math would always return false
+        // (position was in-range at deploy). Only use bin arithmetic when binData provides
+        // a live poolActiveBinId.
+        const activeBinLive = binData?.poolActiveBinId ?? null;
         const lowerBin  = binData?.lowerBinId      ?? tracked?.bin_range?.min ?? null;
         const upperBin  = binData?.upperBinId      ?? tracked?.bin_range?.max ?? null;
-        const activeBin = binData?.poolActiveBinId ?? tracked?.bin_range?.active ?? null;
+        const activeBin = activeBinLive ?? tracked?.bin_range?.active ?? null; // display only
 
-        // Derive OOR from actual bin positions when available — ground truth.
-        // binData.isOutOfRange can lag or disagree with real bin positions, causing
-        // the OOR timer to reset every cycle even while the price is clearly outside range.
-        // Fall back to API field only when bin positions are unavailable.
+        // Derive OOR: use live bin arithmetic when poolActiveBinId is available (ground truth).
+        // When binData is null, fall back to portfolio API's outOfRange flag (reliable, not lagged).
+        // Do NOT use tracked.bin_range.active for OOR math — it is stale (deploy-time snapshot).
         let positionIsOOR;
-        if (activeBin != null && upperBin != null && lowerBin != null) {
-          positionIsOOR = activeBin > upperBin || activeBin < lowerBin;
+        if (activeBinLive != null && upperBin != null && lowerBin != null) {
+          positionIsOOR = activeBinLive > upperBin || activeBinLive < lowerBin;
         } else {
           positionIsOOR = binData ? !!binData.isOutOfRange : !!isOOR;
         }
