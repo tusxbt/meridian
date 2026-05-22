@@ -1825,10 +1825,15 @@ async function telegramHandler(msg) {
           oorBar = `${dir} [${`█`.repeat(filled)}${`░`.repeat(10 - filled)}] ${minsOOR}m/${waitMins}m`;
         }
 
-        // Fee/TVL 24h
-        const feeTvl24h = p.fee_per_tvl_24h;
+        // Fee/TVL — prefer 24h live data (from binData); fall back to deploy-time ratio from tracked state
+        const feeTvl24h = (p.fee_per_tvl_24h != null && p.fee_per_tvl_24h > 0) ? p.fee_per_tvl_24h : null;
+        const feeTvlDeploy = (tracked?.fee_tvl_ratio != null && Number(tracked.fee_tvl_ratio) > 0)
+          ? Number(tracked.fee_tvl_ratio) * 100   // stored as decimal (0.08 = 8%)
+          : null;
         const feeTvlLine = feeTvl24h != null
           ? `📈 Fee/TVL 24h: ${feeTvl24h.toFixed(2)}%`
+          : feeTvlDeploy != null
+          ? `📈 Fee/TVL: ${feeTvlDeploy.toFixed(2)}%`
           : null;
 
         return [
