@@ -12,7 +12,7 @@ import {
 import { getWalletBalances, swapToken, getSplTokenBalance } from "./wallet.js";
 import { studyTopLPers } from "./study.js";
 import { addLesson, clearAllLessons, clearPerformance, removeLessonsByKeyword, getPerformanceHistory, pinLesson, unpinLesson, listLessons } from "../lessons.js";
-import { setPositionInstruction } from "../state.js";
+import { setPositionInstruction, getTrackedPosition } from "../state.js";
 
 import { getPoolMemory, addPoolNote } from "../pool-memory.js";
 import { addStrategy, listStrategies, getStrategy, setActiveStrategy, removeStrategy } from "../strategy-library.js";
@@ -986,6 +986,31 @@ async function runSafetyChecks(name, args) {
     case "close_position": {
       if (!args.position_address || typeof args.position_address !== "string") {
         return { pass: false, reason: "close_position requires a valid position_address (string)." };
+      }
+      // Trailing TP guard: block LLM self-closes before trailing is armed
+      if (config.management.trailingTakeProfit) {
+        const tracked = getTrackedPosition(args.position_address);
+        const peakPnl = tracked?.peak_pnl_pct ?? 0;
+        const trailingArmed = tracked?.trailing_active ?? false;
+        const trailingTrigger = config.management.trailingTriggerPct ?? 2;
+        if (!trailingArmed && peakPnl < trailingTrigger) {
+          const pendingReason = _pendingCloseReasons.get(args.position_address);
+          const closeReason = String(pendingReason ?? args.reason ?? "");
+          const DETERMINISTIC_PATTERNS = [
+            "stop loss", "take profit", "pumped far above range",
+            /^OOR /i, "low yield", /^volume collapse/i, /^TVL collapse/i,
+            "max hold time", /^Trailing TP:/i, /trailing_drop/i, "PROFIT_REVIEW",
+          ];
+          const isDeterministic = DETERMINISTIC_PATTERNS.some(p =>
+            typeof p === "string" ? closeReason.includes(p) : p.test(closeReason)
+          );
+          if (!isDeterministic) {
+            return {
+              pass: false,
+              reason: `Trailing TP is enabled but not yet armed (peak PnL ${peakPnl.toFixed(2)}% < trigger ${trailingTrigger}%). Do NOT close based on technical analysis — wait for trailing TP to activate or a deterministic rule (stop loss, OOR, yield, max hold, volume/TVL collapse) to fire.`,
+            };
+          }
+        }
       }
       return { pass: true };
     }

@@ -34,6 +34,8 @@ INSTRUCTION CHECK (HIGHEST PRIORITY): If a position has an instruction set (e.g.
 
 BIAS TO HOLD: Unless a rule fires (stop-loss, trailing TP, OOR timeout, low yield, instruction condition met), hold. Do not close for ambiguous reasons.
 
+TRAILING TP RULE (CRITICAL): When trailingTakeProfit is enabled, you are NOT allowed to self-close a position based on your own technical analysis (e.g. fib levels, swing objectives, "price returned to deploy level") UNLESS trailing TP has already activated (trailing_active = true). Before trailing activates, the only valid close reasons are: stop loss, OOR timeout, low yield, max hold time, volume/TVL collapse, or a set instruction condition. Any other self-initiated close will be rejected.
+
 Decision Factors for Closing (when no rule fires explicitly):
 - Yield Health: Is fee/TVL still acceptable? If yield < ${config.management.minFeePerTvl24h}% after ${config.management.minAgeBeforeYieldCheck}+ min, consider closing.
 - Price Context: If OOR, will price come back? OOR > ${config.management.outOfRangeWaitMinutes} min = close.
