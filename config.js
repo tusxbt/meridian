@@ -87,7 +87,7 @@ export const config = {
     maxFeeActiveTvlRatio: u.maxFeeActiveTvlRatio !== undefined ? u.maxFeeActiveTvlRatio : null, // null = no cap
     minTvl:            u.minTvl            ?? 10_000,
     maxTvl:            u.maxTvl !== undefined ? u.maxTvl : 150_000,
-    minVolume:         u.minVolume         ?? 500,
+    minVolume:         u.minVolume         ?? 1_500,
     minOrganic:        u.minOrganic        ?? 50,
     minQuoteOrganic:   u.minQuoteOrganic   ?? 50,
     minHolders:        u.minHolders        ?? 500,
